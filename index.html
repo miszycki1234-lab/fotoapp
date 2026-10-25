@@ -146,6 +146,17 @@ const Scissors = mkIcon(React.createElement(React.Fragment, null,
     React.createElement("circle", { cx: "6", cy: "18", r: "3" }),
     React.createElement("path", { d: "M14.8 14.8 20 20" })));
 const Wrench = mkIcon(React.createElement("path", { d: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" }));
+const ChevronUp = mkIcon(React.createElement("path", { d: "m18 15-6-6-6 6" }));
+const ExternalLink = mkIcon(React.createElement(React.Fragment, null,
+    React.createElement("path", { d: "M15 3h6v6" }),
+    React.createElement("path", { d: "M10 14 21 3" }),
+    React.createElement("path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" })));
+const Pencil = mkIcon(React.createElement(React.Fragment, null,
+    React.createElement("path", { d: "M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" }),
+    React.createElement("path", { d: "m15 5 4 4" })));
+const BookOpen = mkIcon(React.createElement(React.Fragment, null,
+    React.createElement("path", { d: "M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" }),
+    React.createElement("path", { d: "M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" })));
 const Upload = mkIcon(React.createElement(React.Fragment, null,
     React.createElement("path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }),
     React.createElement("polyline", { points: "17 8 12 3 7 8" }),
@@ -211,18 +222,24 @@ const THEME_FIELDS = [
     ["bg", "Hintergrund"], ["ink", "Textfarbe"], ["home", "Start & Navigation"],
     ["weddings", "Hochzeiten"], ["jobs", "Aufträge"], ["guides", "Anleitungen"], ["work", "Werkstatt"],
 ];
-function themeVars(t, key) {
+function themeVars(t, key, dark) {
     const th = { ...DEFAULT_THEME, ...(t || {}) };
-    const acc = th[key] || th.home;
-    const card = mix(th.bg, "#ffffff", 0.65);
+    const L = (c) => (dark ? mix(c, "#ffffff", 0.2) : c);
+    const bg = dark ? mix(th.ink, "#000000", 0.45) : th.bg;
+    const ink = dark ? th.bg : th.ink;
+    const card = dark ? mix(bg, "#ffffff", 0.07) : mix(th.bg, "#ffffff", 0.65);
+    const tint = dark ? 0.78 : 0.86;
+    const acc = L(th[key] || th.home);
+    const g = (c) => { const cc = L(c); return [cc, onColor(cc), mix(cc, card, tint)]; };
+    const [w1, w2, w3] = g(th.weddings), [j1, j2, j3] = g(th.jobs), [g1, g2, g3] = g(th.guides), [k1, k2, k3] = g(th.work);
     return {
-        "--bg": th.bg, "--ink": th.ink, "--card": card,
-        "--line": mix(th.bg, th.ink, 0.13), "--track": mix(th.bg, th.ink, 0.27), "--muted": mix(th.ink, th.bg, 0.42),
-        "--acc": acc, "--acc-d": mix(acc, "#000000", 0.22), "--acc-l": mix(acc, card, 0.86), "--on-acc": onColor(acc),
-        "--c-w": th.weddings, "--on-w": onColor(th.weddings), "--c-w-l": mix(th.weddings, card, 0.86),
-        "--c-j": th.jobs, "--on-j": onColor(th.jobs), "--c-j-l": mix(th.jobs, card, 0.86),
-        "--c-g": th.guides, "--on-g": onColor(th.guides), "--c-g-l": mix(th.guides, card, 0.86),
-        "--c-k": th.work, "--on-k": onColor(th.work), "--c-k-l": mix(th.work, card, 0.86),
+        "--bg": bg, "--ink": ink, "--card": card,
+        "--line": mix(bg, ink, dark ? 0.2 : 0.13), "--track": mix(bg, ink, dark ? 0.32 : 0.27), "--muted": mix(ink, bg, dark ? 0.35 : 0.42),
+        "--acc": acc, "--acc-d": dark ? mix(acc, "#ffffff", 0.35) : mix(acc, "#000000", 0.22), "--acc-l": mix(acc, card, tint), "--on-acc": onColor(acc),
+        "--c-w": w1, "--on-w": w2, "--c-w-l": w3,
+        "--c-j": j1, "--on-j": j2, "--c-j-l": j3,
+        "--c-g": g1, "--on-g": g2, "--c-g-l": g3,
+        "--c-k": k1, "--on-k": k2, "--c-k-l": k3,
     };
 }
 /* ───────────── Standardwerte ───────────── */
@@ -284,6 +301,8 @@ const DEFAULT_SETTINGS = {
         { id: "sonstiges", name: "Sonstiges", price: 0 },
     ],
     mig6: true,
+    mode: "light",
+    layout: "auto",
     shop: { kwh: 0.35, gain: 30 },
     products: [
         { id: "tshirt", name: "T-Shirt", price: 4 },
@@ -383,7 +402,7 @@ function machineRate(s) {
     const labor = (s.wage || 0) * (1 + (s.afterHours || 0));
     return { dep, interest, running, perYear, machine, labor, total: machine + labor, invest: gear.reduce((a, g) => a + (g.price || 0), 0) };
 }
-const APP_VERSION = "Version 9 · 23.10.2026";
+const APP_VERSION = "Version 10 · 23.10.2026";
 const MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
 const getImages = (g) => g.images || (g.image ? [g.image] : []);
 /* ───────────── Preisberechnung ───────────── */
@@ -462,7 +481,7 @@ function usePersist(key, init) {
     }, [key]);
     return [val, setVal, ready];
 }
-function shrinkImage(file) {
+function shrinkImage(file, max = 760) {
     return new Promise((resolve, reject) => {
         const fr = new FileReader();
         fr.onerror = reject;
@@ -470,7 +489,7 @@ function shrinkImage(file) {
             const img = new Image();
             img.onerror = reject;
             img.onload = () => {
-                const sc = Math.min(1, 760 / Math.max(img.width, img.height));
+                const sc = Math.min(1, max / Math.max(img.width, img.height));
                 const c = document.createElement("canvas");
                 c.width = img.width * sc;
                 c.height = img.height * sc;
@@ -566,10 +585,15 @@ function Checklist({ items, onChange }) {
                 " Hinzuf\u00FCgen"))));
 }
 function PriceListEditor({ items, onChange, noun, suffix = "€" }) {
+    const upd = (id, p) => onChange(items.map((x) => (x.id === id ? { ...x, ...p } : x)));
     return (React.createElement("div", null,
-        items.map((it) => (React.createElement("div", { className: "prow", key: it.id },
-            React.createElement("input", { value: it.name, placeholder: "Name", onChange: (e) => onChange(items.map((x) => (x.id === it.id ? { ...x, name: e.target.value } : x))) }),
-            React.createElement(NumInput, { value: it.price, suffix: suffix, onChange: (v) => onChange(items.map((x) => (x.id === it.id ? { ...x, price: v } : x))) }),
+        items.map((it, i) => (React.createElement("div", { className: "prow2", key: it.id },
+            React.createElement("input", { className: "pname", value: it.name, placeholder: "Name", onChange: (e) => upd(it.id, { name: e.target.value }) }),
+            React.createElement(NumInput, { value: it.price, suffix: suffix, onChange: (v) => upd(it.id, { price: v }) }),
+            React.createElement("button", { className: "icon", "aria-label": "nach oben", disabled: i === 0, onClick: () => onChange(moveItem(items, i, -1)) },
+                React.createElement(ChevronUp, { size: 18 })),
+            React.createElement("button", { className: "icon", "aria-label": "nach unten", disabled: i === items.length - 1, onClick: () => onChange(moveItem(items, i, 1)) },
+                React.createElement(ChevronDown, { size: 18 })),
             React.createElement("button", { className: "icon", "aria-label": "entfernen", onClick: () => onChange(items.filter((x) => x.id !== it.id)) },
                 React.createElement(X, { size: 16 }))))),
         React.createElement("button", { className: "btn small soft", onClick: () => onChange([...items, { id: uid(), name: "", price: 0 }]) },
@@ -577,6 +601,310 @@ function PriceListEditor({ items, onChange, noun, suffix = "€" }) {
             " ",
             noun,
             " hinzuf\u00FCgen")));
+}
+/* ───────────── Bilder, Skizzen, Notizbuch ───────────── */
+function SketchPad({ onSave, onClose }) {
+    const ref = useRef(null);
+    const [color, setColor] = useState("#222222");
+    const [size, setSize] = useState(5);
+    const drawing = useRef(false);
+    const last = useRef(null);
+    useEffect(() => {
+        const c = ref.current, ctx = c.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, c.width, c.height);
+    }, []);
+    const pos = (e) => {
+        const c = ref.current, r = c.getBoundingClientRect();
+        return [((e.clientX - r.left) * c.width) / r.width, ((e.clientY - r.top) * c.height) / r.height];
+    };
+    const line = (a, b) => {
+        const ctx = ref.current.getContext("2d");
+        ctx.strokeStyle = color;
+        ctx.lineWidth = size * 1.6;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.beginPath();
+        ctx.moveTo(a[0], a[1]);
+        ctx.lineTo(b[0], b[1]);
+        ctx.stroke();
+    };
+    const down = (e) => {
+        e.preventDefault();
+        try {
+            ref.current.setPointerCapture(e.pointerId);
+        }
+        catch (err) { /* egal */ }
+        drawing.current = true;
+        last.current = pos(e);
+        line(last.current, last.current);
+    };
+    const move = (e) => { if (!drawing.current)
+        return; const p = pos(e); line(last.current, p); last.current = p; };
+    const up = () => { drawing.current = false; };
+    const clear = () => { const c = ref.current, ctx = c.getContext("2d"); ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, c.width, c.height); };
+    const colors = ["#222222", "#B4654A", "#627A58", "#567281", "#ffffff"];
+    return (React.createElement("div", { className: "sketch", role: "dialog", "aria-label": "Skizze zeichnen" },
+        React.createElement("div", { className: "sketch-in" },
+            React.createElement("strong", { className: "sk-title" }, "Skizze zeichnen"),
+            React.createElement("canvas", { ref: ref, width: 720, height: 720, onPointerDown: down, onPointerMove: move, onPointerUp: up, onPointerCancel: up }),
+            React.createElement("div", { className: "sk-tools" },
+                colors.map((c) => (React.createElement("button", { key: c, type: "button", className: "sk-col" + (color === c ? " on" : ""), style: { background: c }, "aria-label": c === "#ffffff" ? "Radierer" : "Farbe", onClick: () => setColor(c) }))),
+                React.createElement("span", { className: "sk-sep" }),
+                [2, 5, 10].map((n) => (React.createElement("button", { key: n, type: "button", className: "sk-size" + (size === n ? " on" : ""), "aria-label": `Stärke ${n}`, onClick: () => setSize(n) },
+                    React.createElement("i", { style: { width: n * 2 + 2, height: n * 2 + 2 } }))))),
+            React.createElement("div", { className: "sk-actions" },
+                React.createElement("button", { type: "button", className: "btn small soft", onClick: clear }, "Leeren"),
+                React.createElement("button", { type: "button", className: "btn small soft", onClick: onClose }, "Abbrechen"),
+                React.createElement("button", { type: "button", className: "btn small", onClick: () => onSave(ref.current.toDataURL("image/jpeg", 0.82)) },
+                    React.createElement(Check, { size: 16 }),
+                    " \u00DCbernehmen")))));
+}
+function GalleryField({ images, onChange, max = 8, sketch = false }) {
+    const [big, setBig] = useState("");
+    const [sk, setSk] = useState(false);
+    const pick = async (e) => {
+        const files = Array.from(e.target.files || []).slice(0, max - images.length);
+        e.target.value = "";
+        const out = [];
+        for (const f of files) {
+            try {
+                out.push(await shrinkImage(f));
+            }
+            catch (err) {
+                console.error(err);
+            }
+        }
+        if (out.length)
+            onChange([...images, ...out]);
+    };
+    return (React.createElement("div", null,
+        React.createElement("div", { className: "gallery" },
+            images.map((src, i) => (React.createElement("div", { className: "gthumb", key: i },
+                React.createElement("img", { src: src, alt: `Bild ${i + 1}`, onClick: () => setBig(src) }),
+                React.createElement("button", { type: "button", className: "gx", "aria-label": "Bild entfernen", onClick: () => onChange(images.filter((_, n) => n !== i)) },
+                    React.createElement(X, { size: 14 }))))),
+            images.length < max && (React.createElement("label", { className: "gadd" },
+                React.createElement(ImagePlus, { size: 24 }),
+                React.createElement("span", null, "Bild hinzuf\u00FCgen"),
+                React.createElement("input", { type: "file", accept: "image/*", multiple: true, hidden: true, onChange: pick }))),
+            sketch && images.length < max && (React.createElement("button", { type: "button", className: "gadd", onClick: () => setSk(true) },
+                React.createElement(Pencil, { size: 24 }),
+                React.createElement("span", null, "Skizze zeichnen")))),
+        big && (React.createElement("div", { className: "lightbox", onClick: () => setBig("") },
+            React.createElement("img", { src: big, alt: "Vergr\u00F6\u00DFertes Bild" }),
+            React.createElement("button", { className: "gx big", "aria-label": "Schlie\u00DFen" },
+                React.createElement(X, { size: 20 })))),
+        sk && React.createElement(SketchPad, { onClose: () => setSk(false), onSave: (d) => { onChange([...images, d]); setSk(false); } })));
+}
+function moveItem(items, i, d) {
+    const j = i + d;
+    if (j < 0 || j >= items.length)
+        return items;
+    const a = [...items];
+    [a[i], a[j]] = [a[j], a[i]];
+    return a;
+}
+function ProductEditor({ items, onChange }) {
+    const upd = (id, p) => onChange(items.map((x) => (x.id === id ? { ...x, ...p } : x)));
+    const pick = async (id, e) => {
+        const f = e.target.files && e.target.files[0];
+        e.target.value = "";
+        if (!f)
+            return;
+        try {
+            upd(id, { image: await shrinkImage(f, 420) });
+        }
+        catch (err) {
+            console.error(err);
+        }
+    };
+    return (React.createElement("div", null,
+        items.map((it, i) => (React.createElement("div", { className: "prod", key: it.id },
+            React.createElement("label", { className: "pthumb" + (it.image ? " has" : ""), "aria-label": "Bild f\u00FCr dieses Produkt" },
+                it.image ? React.createElement("img", { src: it.image, alt: it.name }) : React.createElement(ImagePlus, { size: 22 }),
+                React.createElement("input", { type: "file", accept: "image/*", hidden: true, onChange: (e) => pick(it.id, e) })),
+            React.createElement("div", { className: "pfields" },
+                React.createElement("input", { value: it.name, placeholder: "Name, z. B. T-Shirt", onChange: (e) => upd(it.id, { name: e.target.value }) }),
+                React.createElement(NumInput, { value: it.price, suffix: "\u20AC Einkauf", onChange: (v) => upd(it.id, { price: v }) })),
+            React.createElement("div", { className: "pctl" },
+                React.createElement("button", { className: "icon", "aria-label": "nach oben", disabled: i === 0, onClick: () => onChange(moveItem(items, i, -1)) },
+                    React.createElement(ChevronUp, { size: 18 })),
+                React.createElement("button", { className: "icon", "aria-label": "nach unten", disabled: i === items.length - 1, onClick: () => onChange(moveItem(items, i, 1)) },
+                    React.createElement(ChevronDown, { size: 18 })),
+                React.createElement("button", { className: "icon", "aria-label": "entfernen", onClick: () => onChange(items.filter((x) => x.id !== it.id)) },
+                    React.createElement(X, { size: 16 })))))),
+        items.some((x) => x.image) && React.createElement("p", { className: "hint" }, "Das Bild erscheint bei der Auswahl des Produkts im Werkstatt-Projekt und auf der Karteikarte."),
+        React.createElement("button", { className: "btn small soft", onClick: () => onChange([...items, { id: uid(), name: "", price: 0 }]) },
+            React.createElement(Plus, { size: 16 }),
+            " Produkt hinzuf\u00FCgen")));
+}
+const linkHref = (u) => { const t = (u || "").trim(); if (!t)
+    return ""; return /^https?:\/\//i.test(t) ? t : "https://" + t; };
+const linkLabel = (u) => {
+    try {
+        const h = new URL(linkHref(u)).hostname.replace(/^www\./, "");
+        if (/instagram/.test(h))
+            return "Instagram öffnen";
+        if (/youtu/.test(h))
+            return "YouTube öffnen";
+        if (/pinterest/.test(h))
+            return "Pinterest öffnen";
+        return `${h} öffnen`;
+    }
+    catch (e) {
+        return "Link öffnen";
+    }
+};
+const nbEntry = (id, tab, title, text) => ({ id, tab, title, text, link: "", images: [] });
+const DEFAULT_NB = {
+    tol: {
+        tabs: [{ id: "gewinde", name: "Gewinde" }, { id: "toleranz", name: "Toleranzen" }, { id: "material", name: "Material" }],
+        entries: [
+            nbEntry("g-m3", "gewinde", "M3 Gewindeeinsatz (Einschmelzen)", "Loch-Ø 4,0 mm. Einsatz Ø ca. 4,6 mm, Länge 4 bis 6 mm. Das Loch etwas tiefer konstruieren, als der Einsatz lang ist, damit die Schmelze Platz hat. Richtwert: Die Hersteller unterscheiden sich um 0,1 bis 0,5 mm."),
+            nbEntry("g-m4", "gewinde", "M4 Gewindeeinsatz (Einschmelzen)", "Loch-Ø ca. 5,6 mm (je nach Hersteller 5,3 bis 5,7 mm). Einsatz Ø ca. 6,0 mm, Länge 5 bis 8 mm. Auch hier tiefer konstruieren, als der Einsatz lang ist."),
+            nbEntry("g-m5", "gewinde", "M5 Gewindeeinsatz (Einschmelzen)", "Loch-Ø ca. 6,4 mm (bis 6,5 mm). Einsatz Ø ca. 7,1 mm, Länge 6 bis 10 mm."),
+            nbEntry("g-m6", "gewinde", "M6 Gewindeeinsatz (Einschmelzen)", "Loch-Ø ca. 8,0 mm (je nach Hersteller 7,6 bis 8,1 mm). Einsatz Ø ca. 8,4 mm, Länge 8 bis 12 mm."),
+            nbEntry("g-m8", "gewinde", "M8 Gewindeeinsatz (Einschmelzen)", "Loch-Ø ca. 10,2 mm. Einsatz Ø ca. 11,1 mm, Länge 10 bis 16 mm."),
+            nbEntry("g-kern", "gewinde", "Kernloch zum Gewindeschneiden", "Wenn du ein Gewinde schneidest oder eine Schraube direkt in den Kunststoff drehst. Nennmaß: M3 2,5 · M4 3,3 · M5 4,2 · M6 5,0 · M8 6,8 · M10 8,5 mm. Mit 0,3 mm Toleranz konstruieren: M3 2,8 · M4 3,6 · M5 4,5 · M6 5,3 · M8 7,1 · M10 8,8 mm."),
+            nbEntry("g-thru", "gewinde", "Durchgangsloch für Schrauben", "Die Schraube steckt durch (mittlere Reihe): M3 3,4 · M4 4,5 · M5 5,5 · M6 6,6 · M8 9,0 · M10 11,0 mm. Bei gedruckten Löchern 0,1 bis 0,2 mm dazurechnen."),
+            nbEntry("t-zu", "toleranz", "Zuschlag für gedruckte Löcher", "Gedruckte Löcher werden oft 0,1 bis 0,3 mm kleiner als konstruiert. Drucke ein Testteil mit Löchern in 0,1-mm-Schritten und schreib hier auf, was bei deinem Drucker passt. Mein Wert: …"),
+            nbEntry("t-fit", "toleranz", "Spiel und Passungen (Richtwerte)", "Presspassung: −0,1 bis 0 mm · Saugend: 0,1 mm · Schiebesitz: 0,2 bis 0,3 mm · Locker oder bewegliche Teile: 0,4 bis 0,5 mm."),
+            nbEntry("m-schrumpf", "material", "Schrumpf", "PLA schrumpft wenig, ABS und ASA mehr. Bei ASA Passungen eher etwas großzügiger planen."),
+        ],
+    },
+    lens: {
+        tabs: [{ id: "l24", name: "24 mm" }, { id: "l35", name: "35 mm" }, { id: "l50", name: "50 mm" }, { id: "l85", name: "85 mm" }, { id: "l105", name: "105 mm Makro" }, { id: "l70200", name: "70–200 mm" }],
+        entries: [
+            nbEntry("e24", "l24", "Wofür das 24 mm?", "Weitwinkel: enge Räume (Getting Ready), Location und Details im Raum, Gruppenfotos drinnen, Tanzfläche. Nicht zu nah an Gesichter gehen, sonst wirkt es verzerrt."),
+            nbEntry("e35", "l35", "Wofür das 35 mm?", "Reportage-Brennweite: Trauung, Sektempfang, Szenen mit Umgebung. Nah am Geschehen, natürlicher Blick."),
+            nbEntry("e50", "l50", "Wofür das 50 mm?", "Allrounder: Paarporträts, Details, Halbtotale. Natürliche Perspektive ohne Verzerrung."),
+            nbEntry("e85", "l85", "Wofür das 85 mm?", "Porträt-Klassiker: Brautporträt, Paar in Nahaufnahme. Schöne Hintergrundunschärfe, schmeichelnde Gesichter."),
+            nbEntry("e105", "l105", "Wofür das 105 mm Makro?", "Ringe, Schmuck, Einladungskarte, Blumen und kleine Details. Auch für Babyfüße, Hände und Bauch-Details beim Babybauch."),
+            nbEntry("e70", "l70200", "Wofür das 70–200 mm?", "Aus der Distanz: Trauung, Einzug, Reden, Kuss. Kompression für Porträts im Freien."),
+        ],
+    },
+    inspo: {
+        tabs: ["Hochzeit: Gruppenfotos", "Hochzeit: Paarporträts", "After Wedding", "Getting Ready Sie", "Getting Ready Er", "Verlobung", "Paarshooting", "Paarporträt", "Babybauch", "Familie"].map((name, i) => ({ id: "i" + i, name })),
+        entries: [],
+    },
+};
+function LensPlan({ value = [], onChange, nb, onNb }) {
+    const [sheet, setSheet] = useState("");
+    const sel = (id) => value.find((x) => x.id === id);
+    const toggle = (id) => onChange(sel(id) ? value.filter((x) => x.id !== id) : [...value, { id, note: "" }]);
+    const setNote = (id, note) => onChange(value.map((x) => (x.id === id ? { ...x, note } : x)));
+    const sheetTab = nb.tabs.find((x) => x.id === sheet);
+    return (React.createElement("div", null,
+        React.createElement("div", { className: "chips" }, nb.tabs.map((t) => React.createElement("button", { key: t.id, type: "button", className: "chip" + (sel(t.id) ? " on" : ""), onClick: () => toggle(t.id) }, t.name))),
+        value.map((v) => {
+            const t = nb.tabs.find((x) => x.id === v.id);
+            if (!t)
+                return null;
+            const n = nb.entries.filter((e) => e.tab === t.id && (e.images || []).length > 0).length;
+            return (React.createElement("div", { className: "lensrow", key: v.id },
+                React.createElement("div", { className: "lensname" },
+                    React.createElement("strong", null, t.name),
+                    React.createElement("button", { type: "button", className: "btn small soft", onClick: () => setSheet(t.id) },
+                        React.createElement(BookOpen, { size: 16 }),
+                        " Beispielbilder",
+                        n > 0 ? ` (${n})` : "")),
+                React.createElement("input", { value: v.note, placeholder: "F\u00FCr welche Shots? z. B. Getting Ready, Gruppenfoto", onChange: (e) => setNote(v.id, e.target.value) })));
+        }),
+        value.length === 0 && React.createElement("p", { className: "hint" }, "Tippe auf ein Objektiv, um es f\u00FCr dieses Shooting einzuplanen."),
+        sheetTab && (React.createElement("div", { className: "refsheet" },
+            React.createElement("div", { className: "bar" },
+                React.createElement("button", { className: "btn ghost", onClick: () => setSheet("") },
+                    React.createElement(ChevronLeft, { size: 18 }),
+                    " Zur\u00FCck")),
+            React.createElement("h1", { className: "title" }, sheetTab.name),
+            React.createElement("p", { className: "muted lead" }, "Beispielbilder und Hinweise zu diesem Objektiv. Neue Eintr\u00E4ge mit Bildern legst du hier an."),
+            React.createElement(Notebook, { nb: nb, onChange: onNb, startTab: sheet, onlyTab: true, empty: "Noch keine Beispielbilder. Tippe auf \u201ENeuer Eintrag\u201C und f\u00FCge Fotos hinzu, die mit diesem Objektiv entstanden sind." })))));
+}
+function EntryEditor({ init, tabs, isNew, onSave, onCancel, onDelete }) {
+    const [d, setD] = useState(init);
+    const set = (p) => setD((x) => ({ ...x, ...p }));
+    return (React.createElement("div", { className: "entry editing" },
+        React.createElement(Field, { label: "Reiter" },
+            React.createElement("select", { value: d.tab, onChange: (e) => set({ tab: e.target.value }) }, tabs.map((t) => React.createElement("option", { key: t.id, value: t.id }, t.name)))),
+        React.createElement(Field, { label: "\u00DCberschrift" },
+            React.createElement("input", { value: d.title, placeholder: "z. B. M4 Gewindeeinsatz", onChange: (e) => set({ title: e.target.value }) })),
+        React.createElement(Field, { label: "Text" },
+            React.createElement("textarea", { rows: 6, value: d.text, onChange: (e) => set({ text: e.target.value }), placeholder: "Ma\u00DFe, Erfahrungen, Tipps \u2026" })),
+        React.createElement(Field, { label: "Link", hint: "Zum Beispiel ein Instagram-Beitrag oder ein YouTube-Video" },
+            React.createElement("input", { value: d.link, inputMode: "url", placeholder: "https://www.youtube.com/\u2026", onChange: (e) => set({ link: e.target.value }) })),
+        React.createElement("p", { className: "flabel" }, "Bilder und Skizzen"),
+        React.createElement(GalleryField, { images: d.images || [], onChange: (v) => set({ images: v }), max: 6, sketch: true }),
+        React.createElement("div", { className: "eactions" },
+            React.createElement("button", { className: "btn small", onClick: () => onSave(d) },
+                React.createElement(Save, { size: 16 }),
+                " Speichern"),
+            React.createElement("button", { className: "btn small soft", onClick: onCancel }, "Abbrechen"),
+            !isNew && React.createElement(ConfirmButton, { onConfirm: () => onDelete(d.id), label: "L\u00F6schen", askLabel: "Wirklich l\u00F6schen?" }))));
+}
+function Notebook({ nb, onChange, empty, startTab, onlyTab }) {
+    const [tab, setTab] = useState(startTab || (nb.tabs[0] ? nb.tabs[0].id : ""));
+    const [editing, setEditing] = useState(null);
+    const [isNew, setIsNew] = useState(false);
+    const [manage, setManage] = useState(false);
+    const [newTab, setNewTab] = useState("");
+    const [big, setBig] = useState("");
+    const cur = nb.tabs.some((t) => t.id === tab) ? tab : nb.tabs[0] ? nb.tabs[0].id : "";
+    const list = nb.entries.filter((e) => e.tab === cur);
+    const save = (e) => {
+        const exists = nb.entries.some((x) => x.id === e.id);
+        onChange({ ...nb, entries: exists ? nb.entries.map((x) => (x.id === e.id ? e : x)) : [...nb.entries, e] });
+        setTab(e.tab);
+        setEditing(null);
+        setIsNew(false);
+    };
+    const del = (id) => { onChange({ ...nb, entries: nb.entries.filter((x) => x.id !== id) }); setEditing(null); setIsNew(false); };
+    const addTab = () => {
+        const n = newTab.trim();
+        if (!n)
+            return;
+        const t = { id: uid(), name: n };
+        onChange({ ...nb, tabs: [...nb.tabs, t] });
+        setTab(t.id);
+        setNewTab("");
+    };
+    const renameTab = (id, name) => onChange({ ...nb, tabs: nb.tabs.map((t) => (t.id === id ? { ...t, name } : t)) });
+    const delTab = (id) => { onChange({ tabs: nb.tabs.filter((t) => t.id !== id), entries: nb.entries.filter((e) => e.tab !== id) }); };
+    return (React.createElement("div", { className: "nb" },
+        !onlyTab && React.createElement("div", { className: "chips nbtabs" }, nb.tabs.map((t) => (React.createElement("button", { key: t.id, className: "chip" + (t.id === cur ? " on" : ""), onClick: () => { setTab(t.id); setEditing(null); setIsNew(false); } },
+            t.name,
+            React.createElement("small", null, nb.entries.filter((e) => e.tab === t.id).length))))),
+        React.createElement("div", { className: "nbbar" },
+            React.createElement("button", { className: "btn small", onClick: () => { setEditing({ id: uid(), tab: cur, title: "", text: "", link: "", images: [] }); setIsNew(true); } },
+                React.createElement(Plus, { size: 16 }),
+                " Neuer Eintrag"),
+            !onlyTab && React.createElement("button", { className: "btn small soft", onClick: () => setManage(!manage) }, manage ? "Fertig" : "Reiter bearbeiten")),
+        manage && !onlyTab && (React.createElement("div", { className: "panel nbmanage" },
+            nb.tabs.map((t) => (React.createElement("div", { className: "trow", key: t.id },
+                React.createElement("input", { value: t.name, onChange: (e) => renameTab(t.id, e.target.value), "aria-label": "Name des Reiters" }),
+                nb.tabs.length > 1 && React.createElement(ConfirmButton, { onConfirm: () => delTab(t.id), label: "L\u00F6schen", askLabel: "Mit Eintr\u00E4gen l\u00F6schen?" })))),
+            React.createElement("div", { className: "addrow" },
+                React.createElement("input", { value: newTab, placeholder: "Neuer Reiter \u2026", onChange: (e) => setNewTab(e.target.value), onKeyDown: (e) => e.key === "Enter" && addTab() }),
+                React.createElement("button", { className: "btn small", onClick: addTab },
+                    React.createElement(Plus, { size: 16 }),
+                    " Reiter")))),
+        editing && isNew && React.createElement(EntryEditor, { key: editing.id, init: editing, tabs: nb.tabs, isNew: true, onSave: save, onCancel: () => { setEditing(null); setIsNew(false); }, onDelete: del }),
+        list.length === 0 && !editing && React.createElement("p", { className: "empty" }, empty || "In diesem Reiter ist noch nichts. Tippe auf „Neuer Eintrag“."),
+        list.map((e) => (editing && !isNew && editing.id === e.id ? (React.createElement(EntryEditor, { key: e.id, init: editing, tabs: nb.tabs, onSave: save, onCancel: () => setEditing(null), onDelete: del })) : (React.createElement("div", { className: "entry", key: e.id },
+            (e.images || []).length > 0 && (React.createElement("div", { className: "egal" }, e.images.map((src, i) => React.createElement("img", { key: i, src: src, alt: `Bild ${i + 1}`, onClick: () => setBig(src) })))),
+            React.createElement("div", { className: "ehead" },
+                React.createElement("h3", null, e.title || "Ohne Überschrift"),
+                React.createElement("button", { className: "icon", "aria-label": "Bearbeiten", onClick: () => { setEditing({ ...e }); setIsNew(false); } },
+                    React.createElement(Pencil, { size: 16 }))),
+            e.text && React.createElement("p", { className: "etext" }, e.text),
+            e.link && React.createElement("a", { className: "btn small soft", href: linkHref(e.link), target: "_blank", rel: "noopener noreferrer" },
+                React.createElement(ExternalLink, { size: 16 }),
+                " ",
+                linkLabel(e.link)))))),
+        big && (React.createElement("div", { className: "lightbox", onClick: () => setBig("") },
+            React.createElement("img", { src: big, alt: "Vergr\u00F6\u00DFertes Bild" }),
+            React.createElement("button", { className: "gx big", "aria-label": "Schlie\u00DFen" },
+                React.createElement(X, { size: 20 }))))));
 }
 const Arches = ({ className }) => (React.createElement("svg", { className: className, viewBox: "0 0 120 120", fill: "none", stroke: "currentColor", strokeWidth: "9", strokeLinecap: "round", "aria-hidden": "true" },
     React.createElement("path", { d: "M10 124V60a50 50 0 0 1 100 0v64", opacity: ".9" }),
@@ -591,9 +919,10 @@ const Sprig = ({ className }) => (React.createElement("svg", { className: classN
         React.createElement("path", { d: "M45 56C57 54 65 46 67 34C54 34 46 42 45 56Z" }),
         React.createElement("path", { d: "M45 40C36 38 30 32 29 22C38 22 44 28 45 40Z" }),
         React.createElement("path", { d: "M45 8C40 14 40 22 45 30C50 22 50 14 45 8Z" }))));
-function KCard({ kind, title, status, rows, chips, lines: priceLines, total, notes, foot }) {
+const KLBL = { w: "Hochzeit", j: "Auftrag", k: "Werkstatt", g: "Anleitung" };
+function KCard({ kind, title, status, rows, chips, lines: priceLines, total, notes, foot, images = [], noTotal = false }) {
     const [msg, setMsg] = useState("");
-    const text = [`${kind === "w" ? "Hochzeit" : "Auftrag"}: ${title}`, ...rows.filter((r) => r[1]).map(([l, v]) => `${l}: ${v}`), `Gesamtpreis: ${eur(total)}`].join("\n");
+    const text = [`${KLBL[kind]}: ${title}`, ...rows.filter((r) => r[1]).map(([l, v]) => `${l}: ${v}`), ...(noTotal ? [] : [`Gesamtpreis: ${eur(total)}`])].join("\n");
     const share = async () => {
         try {
             if (navigator.share)
@@ -615,23 +944,24 @@ function KCard({ kind, title, status, rows, chips, lines: priceLines, total, not
             }
         }
     };
-    return (React.createElement("div", null,
+    return (React.createElement("div", { className: "kwrap" },
         React.createElement("div", { className: "kcard " + kind },
             React.createElement(Arches, { className: "karch" }),
             React.createElement("div", { className: "khead" },
-                React.createElement("span", null, kind === "w" ? "Hochzeit" : "Auftrag"),
+                React.createElement("span", null, KLBL[kind]),
                 React.createElement(Pill, { s: status })),
             React.createElement("h2", { className: "ktitle" }, title),
             React.createElement("div", { className: "krows" }, rows.filter((r) => r[1]).map(([l, v]) => React.createElement("div", { className: "irow", key: l },
                 React.createElement("span", null, l),
                 React.createElement("b", null, v)))),
             chips.length > 0 && React.createElement("div", { className: "kchips" }, chips.map((c) => React.createElement("span", { key: c }, c))),
-            React.createElement("div", { className: "ktotal" },
+            images.length > 0 && React.createElement("div", { className: "kimgs" }, images.slice(0, 4).map((src, i) => React.createElement("img", { key: i, src: src, alt: `Bild ${i + 1}` }))),
+            !noTotal && React.createElement("div", { className: "ktotal" },
                 React.createElement("span", null, "Gesamtpreis"),
                 React.createElement("strong", null, eur(total))),
             priceLines.length > 0 && (React.createElement("div", { className: "klines" }, priceLines.map(([l, a], i) => React.createElement("div", { key: i },
                 React.createElement("span", null, l),
-                React.createElement("span", null, eur(a)))))),
+                React.createElement("span", null, typeof a === "number" ? eur(a) : a))))),
             notes && React.createElement("p", { className: "knotes" }, notes),
             React.createElement("div", { className: "kfoot" }, foot.filter(Boolean).map((f, i) => React.createElement("span", { key: i }, f)))),
         React.createElement("div", { className: "kactions" },
@@ -639,7 +969,8 @@ function KCard({ kind, title, status, rows, chips, lines: priceLines, total, not
             msg && React.createElement("p", { className: "note" }, msg),
             React.createElement("p", { className: "hint" }, "F\u00FCr einen Screenshot auf dem iPhone Seitentaste und Lauter-Taste gleichzeitig dr\u00FCcken."))));
 }
-function WeddingCardView({ w, s }) {
+const lensText = (list, lens) => (list || []).map((v) => { const t = lens && lens.tabs.find((x) => x.id === v.id); return t ? t.name + (v.note ? ` (${v.note})` : "") : ""; }).filter(Boolean).join(" · ");
+function WeddingCardView({ w, s, lens }) {
     const c = calcWedding(w, s);
     const P = w.prices || s;
     const chosen = [
@@ -654,10 +985,11 @@ function WeddingCardView({ w, s }) {
             ["Auftraggeber", w.client],
             ["Gäste", w.guests > 0 ? String(w.guests) : ""],
             ["Anfahrt", w.km > 0 ? `${w.km} km` : ""],
+            ["Objektive", lensText(w.lenses, lens)],
             ["Checkliste", w.checklist.length ? `${done} von ${w.checklist.length} erledigt` : ""],
-        ], chips: chosen, lines: c.lines, total: c.total, notes: w.notes, foot: [w.pricesFrom && `Preise festgehalten am ${new Date(w.pricesFrom).toLocaleDateString("de-DE")}`, w.updatedAt && `Letzte Änderung: ${fmtStamp(w.updatedAt)}`] }));
+        ], chips: chosen, lines: c.lines, total: c.total, notes: [w.notes, w.inspoText].filter(Boolean).join("\n\n"), images: w.inspo || [], foot: [w.pricesFrom && `Preise festgehalten am ${new Date(w.pricesFrom).toLocaleDateString("de-DE")}`, w.updatedAt && `Letzte Änderung: ${fmtStamp(w.updatedAt)}`] }));
 }
-function JobCardView({ j, s }) {
+function JobCardView({ j, s, lens }) {
     const t = s.jobTypes.find((x) => x.id === j.type);
     return (React.createElement(KCard, { kind: "j", status: j.status, title: j.name || "Ohne Namen", rows: [
             ["Art", t ? t.name : ""],
@@ -665,7 +997,36 @@ function JobCardView({ j, s }) {
             ["Uhrzeit", j.time ? `${j.time} Uhr` : ""],
             ["Location", j.place],
             ["Kontakt", j.contact],
-        ], chips: [], lines: [], total: j.price || 0, notes: j.notes, foot: [j.updatedAt && `Letzte Änderung: ${fmtStamp(j.updatedAt)}`] }));
+            ["Objektive", lensText(j.lenses, lens)],
+        ], chips: [], lines: [], total: j.price || 0, notes: [j.notes, j.inspoText].filter(Boolean).join("\n\n"), images: j.inspo || [], foot: [j.updatedAt && `Letzte Änderung: ${fmtStamp(j.updatedAt)}`] }));
+}
+function WorkCardView({ w, s }) {
+    const { sx, vals, ready, res } = workResult(s, w);
+    const prod = vals.prod ? (s.products || []).find((p) => p.id === vals.prod) || (sx.products || []).find((p) => p.id === vals.prod) : null;
+    const rows = [["Kunde", w.customer], ["Art", KIND_NAME[w.kind]], [w.kind === "neu" ? "Geplant für" : "Fällig bis", fmtDateLong(w.date)]];
+    if (w.kind === "druck") {
+        const m = sx.machines.druck.materials.find((x) => x.id === vals.mat);
+        rows.push(["Material", m ? m.name : ""], ["Verbrauch", vals.grams > 0 ? `${nf(vals.grams, 0)} g` : ""], ["Druckdauer", vals.hours > 0 ? `${nf(vals.hours, 1)} Std.` : ""]);
+    }
+    if (w.kind === "stick") {
+        rows.push(["Produkt", prod ? prod.name : ""], ["Stückzahl", vals.qty > 1 ? String(vals.qty) : ""], ["Stiche", vals.stitchesK > 0 ? `${nf(vals.stitchesK, 1)} Tsd.` : ""], ["Farbwechsel", vals.colors > 0 ? String(vals.colors) : ""]);
+    }
+    if (w.kind === "plot") {
+        const f = sx.machines.plot.foils.find((x) => x.id === vals.foil);
+        rows.push(["Folie", f ? f.name : ""], ["Fläche", areaOf(vals) > 0 ? `${nf(areaOf(vals) * 10000, 0)} cm²` : ""], ["Stückzahl", vals.qty > 1 ? String(vals.qty) : ""], ["Worauf", prod ? prod.name : ""]);
+    }
+    const imgs = [...(w.images || []), ...(prod && prod.image ? [prod.image] : [])];
+    const priced = ready && w.kind !== "neu";
+    const q = Math.max(vals.qty || 1, 1);
+    return (React.createElement(KCard, { kind: "k", status: w.status, title: w.title || KIND_NAME[w.kind], rows: rows, chips: ready && w.kind === "neu" ? [`${res.head.label}: ${res.head.value}`] : [], lines: priced && res.stats ? [["Selbstkosten", res.cost], ...res.stats.map(([l, v]) => [l, v])] : [], total: priced ? res.price * q : 0, noTotal: !priced, notes: w.notes, images: imgs, foot: [w.snapFrom && w.kind !== "neu" && `Maschinen- und Materialwerte festgehalten am ${new Date(w.snapFrom).toLocaleDateString("de-DE")}`, w.updatedAt && `Letzte Änderung: ${fmtStamp(w.updatedAt)}`] }));
+}
+function GuideCardView({ g, s }) {
+    const d = difficulty(g.diff, s);
+    const v = g.vals || {};
+    const gear = ["kamera", "objektiv", "objektiv2", "stativ"].map((k) => v[k]).filter(Boolean).join(" · ");
+    const sets = [["kameramodus", "Modus"], ["blende", "Blende"], ["verschluss", "Zeit"], ["iso", "ISO"], ["blitz", "Blitz"], ["messmodus", "Messung"], ["fokus", "Fokus"], ["weissabgleich", "WB"], ["format", "Format"]]
+        .filter(([k]) => v[k]).map(([k, l]) => `${l} ${v[k]}`).join(" · ");
+    return (React.createElement(KCard, { kind: "g", status: `Stufe ${d.grade}`, title: g.title || "Ohne Titel", rows: [["Ort", g.location], ["Datum", fmtDateLong(g.date)], ["Ausrüstung", gear], ["Einstellungen", sets], ["Schwierigkeit", `${GRADE_WORDS[d.grade]} · ${d.pts} Punkte`]], chips: [...(g.ext || []), ...(g.acc || [])].filter(Boolean), lines: [], total: 0, noTotal: true, notes: [g.text, g.other].filter(Boolean).join("\n\n"), images: getImages(g), foot: [g.updatedAt && `Letzte Änderung: ${fmtStamp(g.updatedAt)}`] }));
 }
 function GearEditor({ items, onChange }) {
     const upd = (id, p) => onChange(items.map((x) => (x.id === id ? { ...x, ...p } : x)));
@@ -717,7 +1078,7 @@ function Editor({ initial, isNew, titleOf, body, summary, card, onSave, onCancel
                     " Karteikarte"),
                 !isNew && React.createElement(ConfirmButton, { onConfirm: onDelete, label: "L\u00F6schen", askLabel: "Wirklich l\u00F6schen?" }))),
         React.createElement("h1", { className: "title" }, titleOf(draft) || (isNew ? "Neu" : "Ohne Namen")),
-        body(draft, update),
+        React.createElement("div", { className: "editorbody" }, body(draft, update)),
         React.createElement("div", { className: "actionbar" },
             sum && open && (React.createElement("div", { className: "pb-lines" },
                 sum.lines.length === 0 && React.createElement("p", { className: "muted" }, "Noch keine Posten."),
@@ -732,7 +1093,7 @@ function Editor({ initial, isNew, titleOf, body, summary, card, onSave, onCancel
                 " Speichern"))));
 }
 /* ───────────── Hochzeit ───────────── */
-function WeddingBody({ w, s, update }) {
+function WeddingBody({ w, s, update, lensNb, onLensNb }) {
     const c = calcWedding(w, s);
     const P = w.prices || s;
     const setIn = (g, id, v) => update({ [g]: { ...(w[g] || {}), [id]: v } });
@@ -792,11 +1153,17 @@ function WeddingBody({ w, s, update }) {
         React.createElement(Section, { title: "Auslieferung" }, groupBlock("delivery", P.delivery || [])),
         React.createElement(Section, { title: "Checkliste", aside: `${w.checklist.filter((i) => i.done).length} von ${w.checklist.length} erledigt` },
             React.createElement(Checklist, { items: w.checklist, onChange: (v) => update({ checklist: v }) })),
+        lensNb && (React.createElement(Section, { title: "Objektive", aside: "Welches Objektiv f\u00FCr welche Shots" },
+            React.createElement(LensPlan, { value: w.lenses || [], onChange: (v) => update({ lenses: v }), nb: lensNb, onNb: onLensNb }))),
+        React.createElement(Section, { title: "Beispielbilder", aside: "Inspiration f\u00FCr dieses Shooting" },
+            React.createElement(GalleryField, { images: w.inspo || [], onChange: (v) => update({ inspo: v }), max: 8, sketch: true }),
+            React.createElement(Field, { label: "Was soll auf die Bilder?" },
+                React.createElement("textarea", { rows: 3, value: w.inspoText || "", onChange: (e) => update({ inspoText: e.target.value }), placeholder: "z. B. solche Gruppenfotos vor dem Gutshaus \u2026" }))),
         React.createElement(Section, { title: "Notizen" },
             React.createElement("textarea", { rows: 4, value: w.notes, onChange: (e) => update({ notes: e.target.value }), placeholder: "W\u00FCnsche, Ablauf, Ansprechpartner \u2026" }))));
 }
 /* ───────────── Aufträge ───────────── */
-function JobBody({ j, s, update, addType }) {
+function JobBody({ j, s, update, addType, lensNb, onLensNb }) {
     const [adding, setAdding] = useState(false);
     const [nName, setNName] = useState("");
     const [nPrice, setNPrice] = useState(0);
@@ -871,6 +1238,12 @@ function JobBody({ j, s, update, addType }) {
         })(),
         React.createElement(Section, { title: "Checkliste" },
             React.createElement(Checklist, { items: j.checklist, onChange: (v) => update({ checklist: v }) })),
+        lensNb && (React.createElement(Section, { title: "Objektive", aside: "Welches Objektiv f\u00FCr welche Shots" },
+            React.createElement(LensPlan, { value: j.lenses || [], onChange: (v) => update({ lenses: v }), nb: lensNb, onNb: onLensNb }))),
+        React.createElement(Section, { title: "Beispielbilder", aside: "Inspiration f\u00FCr dieses Shooting" },
+            React.createElement(GalleryField, { images: j.inspo || [], onChange: (v) => update({ inspo: v }), max: 8, sketch: true }),
+            React.createElement(Field, { label: "Was soll auf die Bilder?" },
+                React.createElement("textarea", { rows: 3, value: j.inspoText || "", onChange: (e) => update({ inspoText: e.target.value }), placeholder: "z. B. solche Gruppenfotos vor dem Gutshaus \u2026" }))),
         React.createElement(Section, { title: "Notizen" },
             React.createElement("textarea", { rows: 4, value: j.notes, onChange: (e) => update({ notes: e.target.value }) }))));
 }
@@ -954,7 +1327,7 @@ function GuideBody({ g, s, update }) {
                 React.createElement(X, { size: 20 }))))));
 }
 /* ───────────── Einstellungen ───────────── */
-function SettingsView({ s, setS, onReset, onExport, onImport, onApplyBox, hasDemo, onLoadDemo, onRemoveDemo, initialSub = "w", openMachine = "" }) {
+function SettingsView({ s, setS, onReset, onExport, onImport, onApplyBox, hasDemo, onLoadDemo, onRemoveDemo, dark, initialSub = "w", openMachine = "" }) {
     const [sub, setSub] = useState(initialSub);
     const set = (patch) => setS({ ...s, ...patch });
     const setDiff = (qk, fn) => set({ diff: s.diff.map((q) => (q.k === qk ? { ...q, o: fn(q.o) } : q)) });
@@ -972,7 +1345,7 @@ function SettingsView({ s, setS, onReset, onExport, onImport, onApplyBox, hasDem
         mf(id, "maint", "Wartung und Verschleiß", "% / Jahr", "Anteil vom Kaufpreis pro Jahr"),
         mf(id, "watt", "Stromverbrauch im Betrieb", "Watt")));
     const accKey = subs.find((x) => x[0] === sub)[2];
-    return (React.createElement("div", { style: themeVars(s.theme, accKey), className: "settings" },
+    return (React.createElement("div", { style: themeVars(s.theme, accKey, dark), className: "settings" },
         React.createElement("h1", { className: "title" }, "Einstellungen"),
         React.createElement("div", { className: "seg", role: "tablist" }, subs.map(([k, l]) => (React.createElement("button", { key: k, role: "tab", "aria-selected": sub === k, className: sub === k ? "on" : "", onClick: () => setSub(k) }, l)))),
         React.createElement("p", { className: "muted autosave" }, "\u00C4nderungen hier werden automatisch gespeichert."),
@@ -1040,7 +1413,7 @@ function SettingsView({ s, setS, onReset, onExport, onImport, onApplyBox, hasDem
                         React.createElement(NumInput, { value: s.wage, suffix: "\u20AC / Std.", onChange: (x) => set({ wage: x }) })))),
             React.createElement(Accordion, { defaultOpen: openMachine === "products", title: "Produkte und Rohlinge", sub: `${s.products.length} Produkte für Stickerei und Plotter` },
                 React.createElement("p", { className: "muted" }, "Zum Beispiel T-Shirt, Hoodie oder Handtuch. Der Preis ist dein Einkaufspreis pro St\u00FCck."),
-                React.createElement(PriceListEditor, { noun: "Produkt", items: s.products, onChange: (v) => set({ products: v }) })),
+                React.createElement(ProductEditor, { items: s.products, onChange: (v) => set({ products: v }) })),
             React.createElement(Accordion, { defaultOpen: openMachine === "druck", title: "3D-Drucker", sub: `${eur(rate(s.machines.druck))} pro Stunde · ${s.machines.druck.materials.length} Materialien` },
                 basics("druck"),
                 React.createElement("div", { className: "grid2" }, mf("druck", "failPct", "Zuschlag für Fehldrucke", "%")),
@@ -1185,7 +1558,13 @@ function SettingsView({ s, setS, onReset, onExport, onImport, onApplyBox, hasDem
                 React.createElement("p", { className: "muted" }, "Stundensatz = Maschinenstundensatz + Wunschlohn \u00D7 (1 + Nacharbeit je Einsatzstunde)."),
                 React.createElement("p", { className: "muted" }, "Das ist eine vereinfachte Orientierung. F\u00FCr Steuer und Buchhaltung bitte mit deiner Steuerberatung abstimmen.")))),
         sub === "d" && (React.createElement("div", null,
-            React.createElement(Accordion, { defaultOpen: true, title: "Farbschema", sub: "Vorlagen oder eigene Farben" },
+            React.createElement(Accordion, { defaultOpen: true, title: "Darstellung", sub: `${{ light: "Hell", dark: "Dunkel", auto: "Automatisch" }[s.mode || "light"]} · Ansicht ${{ auto: "automatisch", phone: "Smartphone", desktop: "Desktop" }[s.layout || "auto"]}` },
+                React.createElement("p", { className: "flabel" }, "Farbmodus"),
+                React.createElement("div", { className: "chips" }, [["light", "Hell"], ["dark", "Dunkel"], ["auto", "Wie das Gerät"]].map(([k, l]) => (React.createElement("button", { key: k, className: "chip" + ((s.mode || "light") === k ? " on" : ""), onClick: () => set({ mode: k }) }, l)))),
+                React.createElement("p", { className: "flabel", style: { marginTop: 16 } }, "Ansicht"),
+                React.createElement("div", { className: "chips" }, [["auto", "Automatisch"], ["phone", "Smartphone"], ["desktop", "Desktop"]].map(([k, l]) => (React.createElement("button", { key: k, className: "chip" + ((s.layout || "auto") === k ? " on" : ""), onClick: () => set({ layout: k }) }, l)))),
+                React.createElement("p", { className: "hint" }, "Automatisch zeigt am Computer oder im Querformat die Desktop-Ansicht mit Seitenleiste und mehreren Spalten. \u201ESmartphone\u201C erzwingt die schmale Ansicht, \u201EDesktop\u201C die breite.")),
+            React.createElement(Accordion, { title: "Farbschema", sub: "Vorlagen oder eigene Farben" },
                 React.createElement("div", { className: "presets" }, Object.entries(THEMES).map(([name, t]) => (React.createElement("button", { key: name, className: "preset", onClick: () => setTheme(t) },
                     React.createElement("span", { className: "dots" }, ["bg", "home", "weddings", "jobs", "guides", "work"].map((k) => React.createElement("i", { key: k, style: { background: t[k] } }))),
                     name)))),
@@ -1512,7 +1891,7 @@ function SliderRow({ label, hint, value, min, max, step, unit, onChange }) {
         hint && React.createElement("span", { className: "hint" }, hint)));
 }
 const KIND_NAME = { druck: "3D-Druck", stick: "Stickerei", plot: "Plotter", neu: "Anschaffung" };
-const snapWork = (s) => JSON.parse(JSON.stringify({ machines: s.machines, products: s.products, shop: s.shop, wage: s.wage }));
+const snapWork = (s) => JSON.parse(JSON.stringify({ machines: s.machines, products: s.products.map(({ image, ...p }) => p), shop: s.shop, wage: s.wage }));
 const workSettings = (s, w) => (w.snap ? { ...s, machines: w.snap.machines, products: w.snap.products, shop: w.snap.shop, wage: w.snap.wage } : s);
 const workResult = (s, w) => {
     const calc = CALCS.find((c) => c.id === w.kind);
@@ -1541,19 +1920,28 @@ function ResultCard({ calc, res }) {
             React.createElement("b", null, val)))),
         res.note && React.createElement("small", null, res.note)));
 }
-function CalcFields({ calc, vals, setVal, s }) {
+function CalcFields({ calc, vals, setVal, s, imgs }) {
     return calc.groups.map((g) => (React.createElement(Section, { key: g.title, title: g.title },
         React.createElement("div", { className: g.grid ? "grid2" : "fieldlist" }, g.fields.filter((f) => !f.showIf || f.showIf(vals)).map((f) => {
             var _a, _b;
             if (f.type === "slider") {
                 return React.createElement(SliderRow, { key: f.k, label: f.label, hint: f.hint, unit: f.unit, min: f.min, max: f.max, step: f.step, value: vals[f.k], onChange: (x) => setVal(f.k, x) });
             }
-            return (React.createElement(Field, { key: f.k, label: f.label, hint: f.hint }, f.type === "select" ? (React.createElement("select", { value: (_a = vals[f.k]) !== null && _a !== void 0 ? _a : "", onChange: (e) => setVal(f.k, f.numeric ? Number(e.target.value) : e.target.value) },
+            const field = (React.createElement(Field, { key: f.k, label: f.label, hint: f.hint }, f.type === "select" ? (React.createElement("select", { value: (_a = vals[f.k]) !== null && _a !== void 0 ? _a : "", onChange: (e) => setVal(f.k, f.numeric ? Number(e.target.value) : e.target.value) },
                 f.placeholder !== false && React.createElement("option", { value: "" }, "\u2013 w\u00E4hlen \u2013"),
                 f.options(s).map(([val, label]) => React.createElement("option", { key: val, value: val }, label)))) : (React.createElement(NumInput, { value: (_b = vals[f.k]) !== null && _b !== void 0 ? _b : 0, suffix: f.suffix, onChange: (x) => setVal(f.k, x) }))));
+            const pr = f.k === "prod" && imgs ? imgs.find((p) => p.id === vals.prod) : null;
+            if (pr && pr.image)
+                return React.createElement("div", { key: f.k },
+                    field,
+                    React.createElement("div", { className: "prodprev" },
+                        React.createElement("img", { src: pr.image, alt: pr.name }),
+                        React.createElement("span", null, pr.name)));
+            return field;
         })))));
 }
-function WorkBody({ w, s, update }) {
+function WorkBody({ w, s, update, nb, onNb }) {
+    const [refOpen, setRefOpen] = useState(false);
     const { calc, sx, vals, ready, res } = workResult(s, w);
     const Icon = calc.icon;
     const info = calc.machine ? calc.machine.info(sx) : null;
@@ -1586,9 +1974,22 @@ function WorkBody({ w, s, update }) {
                     " \u00B7 in den Einstellungen"),
                 React.createElement("strong", null, info.big),
                 React.createElement("small", null, info.small)))),
-        React.createElement(CalcFields, { calc: calc, vals: vals, setVal: setVal, s: sx }),
+        React.createElement(CalcFields, { calc: calc, vals: vals, setVal: setVal, s: sx, imgs: s.products }),
+        !isBuy && (React.createElement(Section, { title: "Bilder und Skizzen", aside: "Vorlage, Wunsch, Ma\u00DFe" },
+            React.createElement(GalleryField, { images: w.images || [], onChange: (v) => update({ images: v }), max: 8, sketch: true }))),
         React.createElement(Section, { title: "Notizen" },
-            React.createElement("textarea", { rows: 3, value: w.notes, onChange: (e) => update({ notes: e.target.value }), placeholder: "Farbe, Ma\u00DFe, Besonderheiten \u2026" }))));
+            React.createElement("textarea", { rows: 4, value: w.notes, onChange: (e) => update({ notes: e.target.value }), placeholder: "Farbe, Ma\u00DFe, Toleranzen, Bohrungen, Besonderheiten \u2026" }),
+            w.kind === "druck" && nb && (React.createElement("button", { type: "button", className: "btn small soft", onClick: () => setRefOpen(true) },
+                React.createElement(BookOpen, { size: 16 }),
+                " Toleranzen und Gewinde nachschlagen"))),
+        refOpen && (React.createElement("div", { className: "refsheet" },
+            React.createElement("div", { className: "bar" },
+                React.createElement("button", { className: "btn ghost", onClick: () => setRefOpen(false) },
+                    React.createElement(ChevronLeft, { size: 18 }),
+                    " Zur\u00FCck zum Projekt")),
+            React.createElement("h1", { className: "title" }, "Nachschlagen"),
+            React.createElement("p", { className: "muted lead" }, "Gewindeeins\u00E4tze, Kernl\u00F6cher, Passungen und deine eigenen Notizen."),
+            React.createElement(Notebook, { nb: nb, onChange: onNb })))));
 }
 function WorkCard({ w, s, onOpen }) {
     const { calc, ready, res } = workResult(s, w);
@@ -1715,150 +2116,153 @@ function Dashboard({ weddings, jobs, guides, work, s, open, go, hasDemo, onLoadD
                 React.createElement("h1", { className: "title" }, greet),
                 React.createElement("p", { className: "muted lead" }, now.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" }))),
             React.createElement(Sprig, { className: "sprig" })),
-        hasDemo && (React.createElement("div", { className: "demobanner" },
-            React.createElement("div", null,
-                React.createElement("strong", null, "Beispieldaten"),
-                React.createElement("span", null, "Das sind Beispiele, damit du siehst, wie die App mit Inhalt aussieht.")),
-            React.createElement("button", { className: "btn small soft", onClick: onRemoveDemo }, "Entfernen"))),
-        next ? (React.createElement("button", { className: "hero", style: { background: `var(--c-${next.kind})`, color: `var(--on-${next.kind})` }, onClick: () => open(next.kind, next.id) },
-            React.createElement(Arches, { className: "hero-arch" }),
-            React.createElement("span", { className: "hero-tag" },
-                "N\u00E4chster Termin \u00B7 ",
-                KIND_LABEL[next.kind]),
-            React.createElement("span", { className: "hero-row" },
-                React.createElement("span", { className: "hero-n" }, nd === 0 ? "Heute" : nd),
-                nd !== 0 && React.createElement("span", { className: "hero-u" }, nd === 1 ? "Tag" : "Tage")),
-            React.createElement("strong", { className: "hero-title" }, next.title),
-            React.createElement("span", { className: "hero-meta" },
-                fmtDateLong(next.date),
-                next.place ? ` · ${next.place}` : ""),
-            next.total > 0 && (React.createElement("span", { className: "hero-prog" },
-                React.createElement("span", null,
-                    React.createElement("i", { style: { width: `${(next.done / next.total) * 100}%` } })),
-                next.done,
-                " von ",
-                next.total,
-                " Punkten der Checkliste erledigt")),
-            React.createElement("span", { className: "hero-foot" },
-                React.createElement("span", { className: "hero-pill" }, next.status),
-                React.createElement("b", null, eur(next.price))))) : (React.createElement("div", { className: "hero plain" },
-            React.createElement(Arches, { className: "hero-arch" }),
-            React.createElement("strong", { className: "hero-title" }, events.length === 0 ? "Noch nichts geplant" : "Kein Termin in Sicht"),
-            React.createElement("span", { className: "hero-meta" }, events.length === 0
-                ? "Lege unten über die Reiter deine erste Hochzeit, einen Auftrag oder ein Werkstatt-Projekt an. Hier siehst du dann Countdown, Umsatz und Termine auf einen Blick."
-                : "Trage bei einem Eintrag ein Datum ein, dann erscheint hier der Countdown."),
-            events.length === 0 && React.createElement("button", { className: "btn small soft", onClick: onLoadDemo }, "Beispieldaten ansehen"))),
-        React.createElement("div", { className: "stats" },
-            React.createElement("div", null,
-                React.createElement("strong", null, eur(booked)),
-                React.createElement("span", null, "gebuchter Umsatz")),
-            React.createElement("div", null,
-                React.createElement("strong", null, weddingsThisYear),
-                React.createElement("span", null,
-                    "Hochzeiten ",
-                    year)),
-            React.createElement("div", null,
-                React.createElement("strong", null, openRequests),
-                React.createElement("span", null, "offene Anfragen"))),
-        queue.length > 0 && (React.createElement(Section, { title: "Werkstatt: Das steht an", aside: React.createElement("button", { className: "link", onClick: () => go("werkstatt") }, "Alle ansehen") }, queue.slice(0, 5).map((e) => {
-            const p = dateParts(e.date);
-            const d = e.date ? daysUntil(e.date) : null;
-            return (React.createElement("button", { key: e.id, className: "card slim", onClick: () => open("k", e.id) },
-                React.createElement("div", { className: "tile sm " + e.tone },
-                    React.createElement("b", null, p.day),
-                    React.createElement("span", null, p.mon)),
-                React.createElement("div", { className: "cbody" },
-                    React.createElement("strong", null, e.title),
-                    React.createElement("span", { className: "sub" },
-                        KIND_NAME[e.kindKey],
-                        e.place ? ` · ${e.place}` : "",
-                        d !== null ? ` · ${d < 0 ? `${-d} Tage überfällig` : inDays(d)}` : "")),
-                React.createElement(Pill, { s: e.status })));
-        }))),
-        upcoming.length > 1 && (React.createElement(Section, { title: "Als N\u00E4chstes" }, upcoming.slice(1, 6).map((e) => {
-            const p = dateParts(e.date);
-            return (React.createElement("button", { key: e.kind + e.id, className: "card slim", onClick: () => open(e.kind, e.id) },
-                React.createElement("div", { className: "tile sm " + e.kind },
-                    React.createElement("b", null, p.day),
-                    React.createElement("span", null, p.mon)),
-                React.createElement("div", { className: "cbody" },
-                    React.createElement("strong", null, e.title),
-                    React.createElement("span", { className: "sub" },
-                        KIND_LABEL[e.kind],
-                        e.place ? ` · ${e.place}` : "",
-                        " \u00B7 ",
-                        inDays(daysUntil(e.date)))),
-                React.createElement(Pill, { s: e.status })));
-        }))),
-        events.length > 0 && (React.createElement(Section, { title: "Umsatz im \u00DCberblick", aside: `gesamt ${eur(sumEarly + booked)}` },
-            React.createElement("div", { className: "panel" },
-                React.createElement("div", { className: "pipe", "aria-hidden": "true" },
-                    React.createElement("i", { style: { flexGrow: sumEarly, background: "var(--track)" } }),
-                    React.createElement("i", { style: { flexGrow: sumActive, background: "var(--c-w)" } }),
-                    React.createElement("i", { style: { flexGrow: sumPaid, background: "var(--c-j)" } })),
-                React.createElement("div", { className: "legend" },
-                    React.createElement("span", null,
-                        React.createElement("i", { style: { background: "var(--track)" } }),
-                        "Angefragt",
-                        React.createElement("b", null, eur(sumEarly))),
-                    React.createElement("span", null,
-                        React.createElement("i", { style: { background: "var(--c-w)" } }),
-                        "Gebucht",
-                        React.createElement("b", null, eur(sumActive))),
-                    React.createElement("span", null,
-                        React.createElement("i", { style: { background: "var(--c-j)" } }),
-                        "Bezahlt",
-                        React.createElement("b", null, eur(sumPaid))))))),
-        React.createElement(Section, { title: "Statistik", aside: React.createElement("span", { className: "yearsw" },
-                React.createElement("button", { "aria-label": "Vorjahr", onClick: () => setYr(yr - 1) },
-                    React.createElement(ChevronLeft, { size: 18 })),
-                React.createElement("b", null, yr),
-                React.createElement("button", { "aria-label": "Folgejahr", onClick: () => setYr(yr + 1) },
-                    React.createElement(ChevronLeft, { size: 18, style: { transform: "rotate(180deg)" } }))) }, evYear.length === 0 ? (React.createElement("p", { className: "empty" },
-            "F\u00FCr ",
-            yr,
-            " gibt es noch keine Eintr\u00E4ge mit Datum.")) : (React.createElement(React.Fragment, null,
-            React.createElement("div", { className: "kpis" },
-                React.createElement("div", null,
-                    React.createElement("strong", null, eur(yRev)),
-                    React.createElement("span", null,
-                        "Umsatz ",
-                        yr)),
-                React.createElement("div", null,
-                    React.createElement("strong", null, eur(activeMonths ? yRev / activeMonths : 0)),
-                    React.createElement("span", null, "\u00D8 pro Monat mit Umsatz")),
-                React.createElement("div", null,
-                    React.createElement("strong", null,
-                        yW.length,
-                        " \u00B7 ",
-                        yJ.length,
-                        " \u00B7 ",
-                        yK.length),
-                    React.createElement("span", null, "Hochzeiten \u00B7 Auftr\u00E4ge \u00B7 Werkstatt")),
-                React.createElement("div", null,
-                    React.createElement("strong", null, eur(avgW)),
-                    React.createElement("span", null, "\u00D8 pro Hochzeit")),
-                yRev > 0 && React.createElement("div", { className: "wide" },
-                    React.createElement("strong", null,
-                        MONTHS[bestIdx],
-                        " \u00B7 ",
-                        eur(mBook[bestIdx])),
-                    React.createElement("span", null, "st\u00E4rkster Monat"))),
-            React.createElement("div", { className: "panel mrows" },
-                MONTHS.map((m, i) => (React.createElement("div", { key: m, className: "mrow" + (yr === now.getFullYear() && i === now.getMonth() ? " now" : "") },
-                    React.createElement("span", { className: "mname" }, m),
-                    React.createElement("span", { className: "mtrack", "aria-hidden": "true" },
-                        React.createElement("i", { style: { width: `${(mBook[i] / maxM) * 100}%`, background: "var(--c-w)" } }),
-                        React.createElement("i", { style: { width: `${(mEarly[i] / maxM) * 100}%`, background: "var(--track)" } })),
-                    React.createElement("b", null, mBook[i] > 0 ? eur(mBook[i]) : "–")))),
-                React.createElement("div", { className: "legend row" },
-                    React.createElement("span", null,
-                        React.createElement("i", { style: { background: "var(--c-w)" } }),
-                        "gebucht"),
-                    React.createElement("span", null,
-                        React.createElement("i", { style: { background: "var(--track)" } }),
-                        "angefragt")))))),
-        lastGuides.length > 0 && (React.createElement(Section, { title: "Zuletzt angelegte Anleitungen" }, lastGuides.map((g) => React.createElement(GuideCard, { key: g.id, g: g, s: s, onOpen: () => open("g", g.id) }))))));
+        React.createElement("div", { className: "dash" },
+            React.createElement("div", { className: "dcol" },
+                hasDemo && (React.createElement("div", { className: "demobanner" },
+                    React.createElement("div", null,
+                        React.createElement("strong", null, "Beispieldaten"),
+                        React.createElement("span", null, "Das sind Beispiele, damit du siehst, wie die App mit Inhalt aussieht.")),
+                    React.createElement("button", { className: "btn small soft", onClick: onRemoveDemo }, "Entfernen"))),
+                next ? (React.createElement("button", { className: "hero", style: { background: `var(--c-${next.kind})`, color: `var(--on-${next.kind})` }, onClick: () => open(next.kind, next.id) },
+                    React.createElement(Arches, { className: "hero-arch" }),
+                    React.createElement("span", { className: "hero-tag" },
+                        "N\u00E4chster Termin \u00B7 ",
+                        KIND_LABEL[next.kind]),
+                    React.createElement("span", { className: "hero-row" },
+                        React.createElement("span", { className: "hero-n" }, nd === 0 ? "Heute" : nd),
+                        nd !== 0 && React.createElement("span", { className: "hero-u" }, nd === 1 ? "Tag" : "Tage")),
+                    React.createElement("strong", { className: "hero-title" }, next.title),
+                    React.createElement("span", { className: "hero-meta" },
+                        fmtDateLong(next.date),
+                        next.place ? ` · ${next.place}` : ""),
+                    next.total > 0 && (React.createElement("span", { className: "hero-prog" },
+                        React.createElement("span", null,
+                            React.createElement("i", { style: { width: `${(next.done / next.total) * 100}%` } })),
+                        next.done,
+                        " von ",
+                        next.total,
+                        " Punkten der Checkliste erledigt")),
+                    React.createElement("span", { className: "hero-foot" },
+                        React.createElement("span", { className: "hero-pill" }, next.status),
+                        React.createElement("b", null, eur(next.price))))) : (React.createElement("div", { className: "hero plain" },
+                    React.createElement(Arches, { className: "hero-arch" }),
+                    React.createElement("strong", { className: "hero-title" }, events.length === 0 ? "Noch nichts geplant" : "Kein Termin in Sicht"),
+                    React.createElement("span", { className: "hero-meta" }, events.length === 0
+                        ? "Lege unten über die Reiter deine erste Hochzeit, einen Auftrag oder ein Werkstatt-Projekt an. Hier siehst du dann Countdown, Umsatz und Termine auf einen Blick."
+                        : "Trage bei einem Eintrag ein Datum ein, dann erscheint hier der Countdown."),
+                    events.length === 0 && React.createElement("button", { className: "btn small soft", onClick: onLoadDemo }, "Beispieldaten ansehen"))),
+                React.createElement("div", { className: "stats" },
+                    React.createElement("div", null,
+                        React.createElement("strong", null, eur(booked)),
+                        React.createElement("span", null, "gebuchter Umsatz")),
+                    React.createElement("div", null,
+                        React.createElement("strong", null, weddingsThisYear),
+                        React.createElement("span", null,
+                            "Hochzeiten ",
+                            year)),
+                    React.createElement("div", null,
+                        React.createElement("strong", null, openRequests),
+                        React.createElement("span", null, "offene Anfragen"))),
+                queue.length > 0 && (React.createElement(Section, { title: "Werkstatt: Das steht an", aside: React.createElement("button", { className: "link", onClick: () => go("werkstatt") }, "Alle ansehen") }, queue.slice(0, 5).map((e) => {
+                    const p = dateParts(e.date);
+                    const d = e.date ? daysUntil(e.date) : null;
+                    return (React.createElement("button", { key: e.id, className: "card slim", onClick: () => open("k", e.id) },
+                        React.createElement("div", { className: "tile sm " + e.tone },
+                            React.createElement("b", null, p.day),
+                            React.createElement("span", null, p.mon)),
+                        React.createElement("div", { className: "cbody" },
+                            React.createElement("strong", null, e.title),
+                            React.createElement("span", { className: "sub" },
+                                KIND_NAME[e.kindKey],
+                                e.place ? ` · ${e.place}` : "",
+                                d !== null ? ` · ${d < 0 ? `${-d} Tage überfällig` : inDays(d)}` : "")),
+                        React.createElement(Pill, { s: e.status })));
+                }))),
+                upcoming.length > 1 && (React.createElement(Section, { title: "Als N\u00E4chstes" }, upcoming.slice(1, 6).map((e) => {
+                    const p = dateParts(e.date);
+                    return (React.createElement("button", { key: e.kind + e.id, className: "card slim", onClick: () => open(e.kind, e.id) },
+                        React.createElement("div", { className: "tile sm " + e.kind },
+                            React.createElement("b", null, p.day),
+                            React.createElement("span", null, p.mon)),
+                        React.createElement("div", { className: "cbody" },
+                            React.createElement("strong", null, e.title),
+                            React.createElement("span", { className: "sub" },
+                                KIND_LABEL[e.kind],
+                                e.place ? ` · ${e.place}` : "",
+                                " \u00B7 ",
+                                inDays(daysUntil(e.date)))),
+                        React.createElement(Pill, { s: e.status })));
+                })))),
+            React.createElement("div", { className: "dcol" },
+                events.length > 0 && (React.createElement(Section, { title: "Umsatz im \u00DCberblick", aside: `gesamt ${eur(sumEarly + booked)}` },
+                    React.createElement("div", { className: "panel" },
+                        React.createElement("div", { className: "pipe", "aria-hidden": "true" },
+                            React.createElement("i", { style: { flexGrow: sumEarly, background: "var(--track)" } }),
+                            React.createElement("i", { style: { flexGrow: sumActive, background: "var(--c-w)" } }),
+                            React.createElement("i", { style: { flexGrow: sumPaid, background: "var(--c-j)" } })),
+                        React.createElement("div", { className: "legend" },
+                            React.createElement("span", null,
+                                React.createElement("i", { style: { background: "var(--track)" } }),
+                                "Angefragt",
+                                React.createElement("b", null, eur(sumEarly))),
+                            React.createElement("span", null,
+                                React.createElement("i", { style: { background: "var(--c-w)" } }),
+                                "Gebucht",
+                                React.createElement("b", null, eur(sumActive))),
+                            React.createElement("span", null,
+                                React.createElement("i", { style: { background: "var(--c-j)" } }),
+                                "Bezahlt",
+                                React.createElement("b", null, eur(sumPaid))))))),
+                React.createElement(Section, { title: "Statistik", aside: React.createElement("span", { className: "yearsw" },
+                        React.createElement("button", { "aria-label": "Vorjahr", onClick: () => setYr(yr - 1) },
+                            React.createElement(ChevronLeft, { size: 18 })),
+                        React.createElement("b", null, yr),
+                        React.createElement("button", { "aria-label": "Folgejahr", onClick: () => setYr(yr + 1) },
+                            React.createElement(ChevronLeft, { size: 18, style: { transform: "rotate(180deg)" } }))) }, evYear.length === 0 ? (React.createElement("p", { className: "empty" },
+                    "F\u00FCr ",
+                    yr,
+                    " gibt es noch keine Eintr\u00E4ge mit Datum.")) : (React.createElement(React.Fragment, null,
+                    React.createElement("div", { className: "kpis" },
+                        React.createElement("div", null,
+                            React.createElement("strong", null, eur(yRev)),
+                            React.createElement("span", null,
+                                "Umsatz ",
+                                yr)),
+                        React.createElement("div", null,
+                            React.createElement("strong", null, eur(activeMonths ? yRev / activeMonths : 0)),
+                            React.createElement("span", null, "\u00D8 pro Monat mit Umsatz")),
+                        React.createElement("div", null,
+                            React.createElement("strong", null,
+                                yW.length,
+                                " \u00B7 ",
+                                yJ.length,
+                                " \u00B7 ",
+                                yK.length),
+                            React.createElement("span", null, "Hochzeiten \u00B7 Auftr\u00E4ge \u00B7 Werkstatt")),
+                        React.createElement("div", null,
+                            React.createElement("strong", null, eur(avgW)),
+                            React.createElement("span", null, "\u00D8 pro Hochzeit")),
+                        yRev > 0 && React.createElement("div", { className: "wide" },
+                            React.createElement("strong", null,
+                                MONTHS[bestIdx],
+                                " \u00B7 ",
+                                eur(mBook[bestIdx])),
+                            React.createElement("span", null, "st\u00E4rkster Monat"))),
+                    React.createElement("div", { className: "panel mrows" },
+                        MONTHS.map((m, i) => (React.createElement("div", { key: m, className: "mrow" + (yr === now.getFullYear() && i === now.getMonth() ? " now" : "") },
+                            React.createElement("span", { className: "mname" }, m),
+                            React.createElement("span", { className: "mtrack", "aria-hidden": "true" },
+                                React.createElement("i", { style: { width: `${(mBook[i] / maxM) * 100}%`, background: "var(--c-w)" } }),
+                                React.createElement("i", { style: { width: `${(mEarly[i] / maxM) * 100}%`, background: "var(--track)" } })),
+                            React.createElement("b", null, mBook[i] > 0 ? eur(mBook[i]) : "–")))),
+                        React.createElement("div", { className: "legend row" },
+                            React.createElement("span", null,
+                                React.createElement("i", { style: { background: "var(--c-w)" } }),
+                                "gebucht"),
+                            React.createElement("span", null,
+                                React.createElement("i", { style: { background: "var(--track)" } }),
+                                "angefragt")))))),
+                lastGuides.length > 0 && (React.createElement(Section, { title: "Zuletzt angelegte Anleitungen" }, lastGuides.map((g) => React.createElement(GuideCard, { key: g.id, g: g, s: s, onOpen: () => open("g", g.id) }))))))));
 }
 /* ───────────── App ───────────── */
 function App() {
@@ -1868,6 +2272,10 @@ function App() {
     const [guides, setGuides, r4] = usePersist("fm:guides", []);
     const [work, setWork, r5] = usePersist("fm:work", []);
     const [demoSeen, setDemoSeen, r6] = usePersist("fm:demoSeen", false);
+    const [nbRaw, setNb, r7] = usePersist("fm:nb", DEFAULT_NB);
+    const [aview, setAview] = useState("guides");
+    const [vw, setVw] = useState(typeof window !== "undefined" ? window.innerWidth : 400);
+    const [sysDark, setSysDark] = useState(() => !!(typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches));
     const [picker, setPicker] = useState(false);
     const [wfilter, setWfilter] = useState("open");
     const [tab, setTab] = useState("start");
@@ -1886,7 +2294,33 @@ function App() {
         lists: { ...DEFAULT_SETTINGS.lists, ...(settingsRaw.lists || {}) },
         theme: { ...DEFAULT_THEME, ...(settingsRaw.theme || {}) },
     }), [settingsRaw]);
-    const ready = r1 && r2 && r3 && r4 && r5 && r6;
+    const ready = r1 && r2 && r3 && r4 && r5 && r6 && r7;
+    const nbAll = useMemo(() => ({
+        tol: { ...DEFAULT_NB.tol, ...(nbRaw.tol || {}) },
+        inspo: { ...DEFAULT_NB.inspo, ...(nbRaw.inspo || {}) },
+        lens: { ...DEFAULT_NB.lens, ...(nbRaw.lens || {}) },
+    }), [nbRaw]);
+    const dark = s.mode === "dark" || (s.mode === "auto" && sysDark);
+    const wide = s.layout === "desktop" || (s.layout !== "phone" && vw >= 900);
+    useEffect(() => {
+        const f = () => setVw(window.innerWidth);
+        window.addEventListener("resize", f);
+        return () => window.removeEventListener("resize", f);
+    }, []);
+    useEffect(() => {
+        if (!window.matchMedia)
+            return undefined;
+        const m = window.matchMedia("(prefers-color-scheme: dark)");
+        const f = (e) => setSysDark(e.matches);
+        if (m.addEventListener)
+            m.addEventListener("change", f);
+        else
+            m.addListener(f);
+        return () => { if (m.removeEventListener)
+            m.removeEventListener("change", f);
+        else
+            m.removeListener(f); };
+    }, []);
     // Einmalig: Auftragsart „Fotobox-Miete“ für bereits gespeicherte Einstellungen ergänzen.
     useEffect(() => {
         if (!ready || settingsRaw.mig6)
@@ -1967,7 +2401,7 @@ function App() {
     };
     const remove = (setter, id) => { setter((arr) => arr.filter((x) => x.id !== id)); setView(null); setToast("Gelöscht"); top(); };
     const exportData = () => {
-        const blob = new Blob([JSON.stringify({ app: "fotomanager", v: 1, settings: settingsRaw, weddings, jobs, guides, work })], { type: "application/json" });
+        const blob = new Blob([JSON.stringify({ app: "fotomanager", v: 1, settings: settingsRaw, weddings, jobs, guides, work, nb: nbRaw })], { type: "application/json" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
@@ -1988,6 +2422,7 @@ function App() {
             setJobs(d.jobs || []);
             setGuides(d.guides || []);
             setWork(d.work || []);
+            setNb(d.nb || DEFAULT_NB);
             setToast("Sicherung geladen");
         }
         catch (e) {
@@ -2016,24 +2451,34 @@ function App() {
     else if (view) {
         const cancel = () => { setView(null); top(); };
         const isNew = view.id === "new";
-        if (view.kind === "k") {
+        if (view.kind === "n") {
+            body = (React.createElement("div", null,
+                React.createElement("div", { className: "bar" },
+                    React.createElement("button", { className: "btn ghost", onClick: cancel },
+                        React.createElement(ChevronLeft, { size: 18 }),
+                        " Zur\u00FCck")),
+                React.createElement("h1", { className: "title" }, "Nachschlagen"),
+                React.createElement("p", { className: "muted lead" }, "Toleranzen, Gewindeeins\u00E4tze und deine eigenen Notizen f\u00FCr den 3D-Druck. Eigene Reiter, Texte, Bilder und Links."),
+                React.createElement(Notebook, { nb: nbAll.tol, onChange: (v) => setNb((a) => ({ ...a, tol: v })) })));
+        }
+        else if (view.kind === "k") {
             const item = isNew ? view.item : work.find((x) => x.id === view.id);
-            body = item && (React.createElement(Editor, { key: item.id, initial: item, isNew: isNew, titleOf: (d) => d.title || (isNew ? (d.kind === "neu" ? "Neue Anschaffung" : `Neu: ${KIND_NAME[d.kind]}`) : ""), body: (d, u) => React.createElement(WorkBody, { w: d, s: s, update: u }), summary: (d) => {
+            body = item && (React.createElement(Editor, { key: item.id, initial: item, isNew: isNew, titleOf: (d) => d.title || (isNew ? (d.kind === "neu" ? "Neue Anschaffung" : `Neu: ${KIND_NAME[d.kind]}`) : ""), body: (d, u) => React.createElement(WorkBody, { w: d, s: s, update: u, nb: nbAll.tol, onNb: (v) => setNb((a) => ({ ...a, tol: v })) }), card: (d) => React.createElement(WorkCardView, { w: d, s: s }), summary: (d) => {
                     const r = workResult(s, d);
                     return r.ready ? { label: r.res.head.label, value: r.res.head.value, lines: r.res.lines } : { label: "Preis", value: "folgt", lines: [] };
                 }, onSave: upsert(setWork), onCancel: cancel, onDelete: () => remove(setWork, item.id) }));
         }
         else if (view.kind === "w") {
             const item = isNew ? view.item : weddings.find((x) => x.id === view.id);
-            body = item && (React.createElement(Editor, { key: item.id, initial: item, isNew: isNew, titleOf: (d) => [d.bride, d.groom].filter(Boolean).join(" & ") || (isNew ? "Neue Hochzeit" : ""), body: (d, u) => React.createElement(WeddingBody, { w: d, s: s, update: u }), summary: (d) => calcWedding(d, s), card: (d) => React.createElement(WeddingCardView, { w: d, s: s }), onSave: upsert(setWeddings), onCancel: cancel, onDelete: () => remove(setWeddings, item.id) }));
+            body = item && (React.createElement(Editor, { key: item.id, initial: item, isNew: isNew, titleOf: (d) => [d.bride, d.groom].filter(Boolean).join(" & ") || (isNew ? "Neue Hochzeit" : ""), body: (d, u) => React.createElement(WeddingBody, { w: d, s: s, update: u, lensNb: nbAll.lens, onLensNb: (v) => setNb((a) => ({ ...a, lens: v })) }), summary: (d) => calcWedding(d, s), card: (d) => React.createElement(WeddingCardView, { w: d, s: s, lens: nbAll.lens }), onSave: upsert(setWeddings), onCancel: cancel, onDelete: () => remove(setWeddings, item.id) }));
         }
         else if (view.kind === "j") {
             const item = isNew ? view.item : jobs.find((x) => x.id === view.id);
-            body = item && (React.createElement(Editor, { key: item.id, initial: item, isNew: isNew, titleOf: (d) => d.name || (isNew ? "Neuer Auftrag" : ""), body: (d, u) => React.createElement(JobBody, { j: d, s: s, update: u, addType: addType }), card: (d) => React.createElement(JobCardView, { j: d, s: s }), onSave: upsert(setJobs), onCancel: cancel, onDelete: () => remove(setJobs, item.id) }));
+            body = item && (React.createElement(Editor, { key: item.id, initial: item, isNew: isNew, titleOf: (d) => d.name || (isNew ? "Neuer Auftrag" : ""), body: (d, u) => React.createElement(JobBody, { j: d, s: s, update: u, addType: addType, lensNb: nbAll.lens, onLensNb: (v) => setNb((a) => ({ ...a, lens: v })) }), card: (d) => React.createElement(JobCardView, { j: d, s: s, lens: nbAll.lens }), onSave: upsert(setJobs), onCancel: cancel, onDelete: () => remove(setJobs, item.id) }));
         }
         else {
             const item = isNew ? view.item : guides.find((x) => x.id === view.id);
-            body = item && (React.createElement(Editor, { key: item.id, initial: item, isNew: isNew, titleOf: (d) => d.title || (isNew ? "Neue Anleitung" : ""), body: (d, u) => React.createElement(GuideBody, { g: d, s: s, update: u }), onSave: upsert(setGuides), onCancel: cancel, onDelete: () => remove(setGuides, item.id) }));
+            body = item && (React.createElement(Editor, { key: item.id, initial: item, isNew: isNew, titleOf: (d) => d.title || (isNew ? "Neue Anleitung" : ""), body: (d, u) => React.createElement(GuideBody, { g: d, s: s, update: u }), card: (d) => React.createElement(GuideCardView, { g: d, s: s }), onSave: upsert(setGuides), onCancel: cancel, onDelete: () => remove(setGuides, item.id) }));
         }
     }
     else if (tab === "start") {
@@ -2048,7 +2493,7 @@ function App() {
                     React.createElement(Plus, { size: 18 }),
                     " Neu")),
             list.length === 0 && React.createElement("p", { className: "empty" }, "Noch keine Hochzeit. Tippe auf \u201ENeu\u201C. Preis, Dauer und Aufschl\u00E4ge rechnet die App automatisch."),
-            list.map((w) => React.createElement(WeddingCard, { key: w.id, w: w, onOpen: () => open("w", w.id) }))));
+            React.createElement("div", { className: "cardgrid" }, list.map((w) => React.createElement(WeddingCard, { key: w.id, w: w, onOpen: () => open("w", w.id) })))));
     }
     else if (tab === "auftraege") {
         const list = [...jobs].sort(byDate);
@@ -2060,7 +2505,7 @@ function App() {
                     " Neu")),
             React.createElement("p", { className: "muted lead" }, "Babybauch, Familie, Paarshooting und alles au\u00DFerhalb von Hochzeiten."),
             list.length === 0 && React.createElement("p", { className: "empty" }, "Noch kein Auftrag angelegt."),
-            list.map((j) => React.createElement(JobCard, { key: j.id, j: j, s: s, onOpen: () => open("j", j.id) }))));
+            React.createElement("div", { className: "cardgrid" }, list.map((j) => React.createElement(JobCard, { key: j.id, j: j, s: s, onOpen: () => open("j", j.id) })))));
     }
     else if (tab === "werkstatt") {
         const filters = [["open", "Offen"], ["druck", "3D-Druck"], ["stick", "Stickerei"], ["plot", "Plotter"], ["neu", "Anschaffungen"], ["all", "Alle"]];
@@ -2086,24 +2531,40 @@ function App() {
                 l,
                 React.createElement("small", null, work.filter((w) => match(w, k)).length))))),
             list.length === 0 && React.createElement("p", { className: "empty" }, work.length === 0 ? "Noch kein Projekt. Tippe auf „Neu“ und wähle 3D-Druck, Stickerei, Plotter oder eine Anschaffung." : "In dieser Ansicht ist nichts."),
-            list.map((w) => React.createElement(WorkCard, { key: w.id, w: w, s: s, onOpen: () => open("k", w.id) })),
+            React.createElement("div", { className: "cardgrid" }, list.map((w) => React.createElement(WorkCard, { key: w.id, w: w, s: s, onOpen: () => open("k", w.id) }))),
+            React.createElement(Section, { title: "Nachschlagen" },
+                React.createElement("button", { className: "card", onClick: () => open("n", "tol") },
+                    React.createElement("div", { className: "tile k" },
+                        React.createElement(BookOpen, { size: 26 })),
+                    React.createElement("div", { className: "cbody" },
+                        React.createElement("strong", null, "Toleranzen und Gewinde"),
+                        React.createElement("span", { className: "sub" }, "Gewindeeins\u00E4tze, Kernl\u00F6cher, Passungen. Mit eigenen Reitern, Texten, Bildern und Links.")))),
             React.createElement("button", { className: "link wlink", onClick: () => editMachine("") }, "Maschinen, Materialien und Gewinn einstellen")));
     }
     else if (tab === "anleitungen") {
         body = (React.createElement("div", null,
             React.createElement("div", { className: "bar" },
                 React.createElement("h1", { className: "title" }, "Anleitungen"),
-                React.createElement("button", { className: "btn", onClick: () => startNew("g") },
+                aview === "guides" && React.createElement("button", { className: "btn", onClick: () => startNew("g") },
                     React.createElement(Plus, { size: 18 }),
                     " Neu")),
-            React.createElement("p", { className: "muted lead" }, "Shooting-Planung mit Bildern, Ausr\u00FCstung, Einstellungen und automatischem Schwierigkeitsgrad."),
-            guides.length === 0 && React.createElement("p", { className: "empty" }, "Noch keine Anleitung. Lege deine erste an."),
-            guides.map((g) => React.createElement(GuideCard, { key: g.id, g: g, s: s, onOpen: () => open("g", g.id) }))));
+            React.createElement("div", { className: "seg two" },
+                React.createElement("button", { className: aview === "guides" ? "on" : "", onClick: () => setAview("guides") }, "Anleitungen"),
+                React.createElement("button", { className: aview === "inspo" ? "on" : "", onClick: () => setAview("inspo") }, "Inspiration"),
+                React.createElement("button", { className: aview === "lens" ? "on" : "", onClick: () => setAview("lens") }, "Objektive")),
+            aview === "guides" ? (React.createElement(React.Fragment, null,
+                React.createElement("p", { className: "muted lead" }, "Shooting-Planung mit Bildern, Ausr\u00FCstung, Einstellungen und automatischem Schwierigkeitsgrad."),
+                guides.length === 0 && React.createElement("p", { className: "empty" }, "Noch keine Anleitung. Lege deine erste an."),
+                React.createElement("div", { className: "cardgrid" }, guides.map((g) => React.createElement(GuideCard, { key: g.id, g: g, s: s, onOpen: () => open("g", g.id) }))))) : aview === "lens" ? (React.createElement(React.Fragment, null,
+                React.createElement("p", { className: "muted lead" }, "Welche Brennweite f\u00FCr welche Shots, mit Beispielbildern. Beim Planen w\u00E4hlst du die Objektive in der Hochzeit oder im Auftrag aus."),
+                React.createElement(Notebook, { nb: nbAll.lens, onChange: (v) => setNb((a) => ({ ...a, lens: v })), empty: "In diesem Reiter ist noch nichts. Tippe auf \u201ENeuer Eintrag\u201C und f\u00FCge Beispielbilder hinzu." }))) : (React.createElement(React.Fragment, null,
+                React.createElement("p", { className: "muted lead" }, "Dein Bilderarchiv: Beispielfotos nach Kategorie, mit Text und Links zu Instagram oder YouTube."),
+                React.createElement(Notebook, { nb: nbAll.inspo, onChange: (v) => setNb((a) => ({ ...a, inspo: v })), empty: "In diesem Reiter ist noch nichts. Tippe auf \u201ENeuer Eintrag\u201C und f\u00FCge Bilder, Text oder einen Link hinzu." })))));
     }
     else
-        body = React.createElement(SettingsView, { key: jump ? jump.sub + (jump.machine || "") : "std", onApplyBox: applyBoxPrice, hasDemo: hasDemo, onLoadDemo: loadDemo, onRemoveDemo: removeDemo, initialSub: jump ? jump.sub : "w", openMachine: jump ? jump.machine : "", s: s, setS: setSettings, onExport: exportData, onImport: importData, onReset: () => { setSettings(DEFAULT_SETTINGS); setToast("Zurückgesetzt"); } });
+        body = React.createElement(SettingsView, { dark: dark, key: jump ? jump.sub + (jump.machine || "") : "std", onApplyBox: applyBoxPrice, hasDemo: hasDemo, onLoadDemo: loadDemo, onRemoveDemo: removeDemo, initialSub: jump ? jump.sub : "w", openMachine: jump ? jump.machine : "", s: s, setS: setSettings, onExport: exportData, onImport: importData, onReset: () => { setSettings(DEFAULT_SETTINGS); setToast("Zurückgesetzt"); } });
     const accKey = view
-        ? { w: "weddings", j: "jobs", g: "guides", k: "work" }[view.kind]
+        ? { w: "weddings", j: "jobs", g: "guides", k: "work", n: "work" }[view.kind]
         : { hochzeiten: "weddings", auftraege: "jobs", anleitungen: "guides", werkstatt: "work" }[tab] || "home";
     const footMsg = view
         ? {
@@ -2111,6 +2572,7 @@ function App() {
             j: "Der Preis dieses Auftrags bleibt so, wie du ihn gespeichert hast.",
             g: "Der Schwierigkeitsgrad ergibt sich aus den Punkten, die du unter Einstellungen festlegst.",
             k: "Richtwert aus Maschine, Material, Strom, deinem Lohn und dem Gewinnaufschlag, ohne Steuern. Die Werte sind für dieses Projekt festgehalten.",
+            n: "Alle Maße sind Richtwerte. Prüfe sie bei neuem Material oder Drucker mit einem Testteil.",
         }[view.kind]
         : {
             start: "Alle Beträge sind Richtwerte ohne Mehrwertsteuer. Deine Daten liegen nur auf diesem Gerät.",
@@ -2124,7 +2586,7 @@ function App() {
         ["start", "Start", Home], ["hochzeiten", "Hochzeiten", Heart], ["auftraege", "Aufträge", Briefcase],
         ["werkstatt", "Werkstatt", Wrench], ["anleitungen", "Anleitungen", ClipboardList], ["einstellungen", "Einstellungen", Settings],
     ];
-    return (React.createElement("div", { className: "fm", style: themeVars(s.theme, accKey) },
+    return (React.createElement("div", { className: "fm" + (dark ? " dark" : "") + (wide ? " wide" : "") + (view ? " editing" : ""), style: themeVars(s.theme, accKey, dark) },
         React.createElement("style", null, CSS),
         React.createElement("main", null,
             body,
@@ -2135,9 +2597,15 @@ function App() {
             React.createElement(Check, { size: 16, strokeWidth: 3 }),
             " ",
             toast),
-        !view && (React.createElement("nav", null, tabs.map(([k, l, Icon]) => (React.createElement("button", { key: k, className: (tab === k ? "on" : "") + (k === "einstellungen" ? " icononly" : ""), onClick: () => go(k), "aria-label": l, style: tab === k ? themeVars(s.theme, { start: "home", hochzeiten: "weddings", auftraege: "jobs", werkstatt: "work", anleitungen: "guides", einstellungen: "home" }[k]) : undefined },
-            React.createElement(Icon, { size: 21 }),
-            k !== "einstellungen" && React.createElement("span", null, l))))))));
+        !view && (React.createElement("nav", null,
+            React.createElement("div", { className: "brand" },
+                React.createElement(Sprig, { className: "brand-sprig" }),
+                React.createElement("div", null,
+                    React.createElement("strong", null, "Foto-Manager"),
+                    React.createElement("small", null, APP_VERSION))),
+            tabs.map(([k, l, Icon]) => (React.createElement("button", { key: k, className: (tab === k ? "on" : "") + (k === "einstellungen" ? " icononly" : ""), onClick: () => go(k), "aria-label": l, style: tab === k ? themeVars(s.theme, { start: "home", hochzeiten: "weddings", auftraege: "jobs", werkstatt: "work", anleitungen: "guides", einstellungen: "home" }[k], dark) : undefined },
+                React.createElement(Icon, { size: 21 }),
+                React.createElement("span", null, l))))))));
 }
 /* ───────────── Styles ───────────── */
 const CSS = `
@@ -2427,6 +2895,7 @@ const CSS = `
 .fm .quick.two .qi{align-items:end}
 .fm .filters{margin:0 0 14px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}
 .fm .filters .chip{flex:0 0 auto}
+.fm .link{background:none;border:none;color:var(--acc-d);font:inherit;font-weight:650;font-size:14px;cursor:pointer;padding:6px 2px}
 .fm .wlink{display:block;margin:14px auto 0;text-align:center}
 .fm .demobanner{display:flex;align-items:center;gap:12px;background:var(--c-k-l);border-radius:20px;padding:12px 14px;margin:0 0 12px}
 .fm .demobanner div{flex:1;display:flex;flex-direction:column;font-size:13px;color:var(--muted)}
@@ -2477,6 +2946,107 @@ const CSS = `
 .fm .gearrow .icon{grid-column:3;grid-row:2}
 .fm .backup{display:flex;flex-direction:column;gap:8px}
 .fm .backup .btn{width:100%;cursor:pointer}
+
+/* Galerie, Skizze, Notizbuch */
+.fm button.gadd{background:none;font:inherit;border:2px dashed var(--track);cursor:pointer;padding:6px}
+.fm .sketch{position:fixed;inset:0;z-index:60;background:rgba(20,14,10,.62);display:grid;place-items:center;padding:12px;overflow:auto}
+.fm .sketch-in{background:var(--card);border-radius:28px;padding:16px;width:min(560px,100%);display:flex;flex-direction:column;gap:12px}
+.fm .sk-title{font-family:var(--serif);font-size:20px}
+.fm .sketch canvas{width:100%;aspect-ratio:1;border-radius:18px;background:#fff;touch-action:none;box-shadow:0 0 0 1px var(--line);cursor:crosshair;display:block}
+.fm .sk-tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.fm .sk-col{width:36px;height:36px;border-radius:50%;border:3px solid var(--card);box-shadow:0 0 0 1.5px var(--line);cursor:pointer;padding:0}
+.fm .sk-col.on{box-shadow:0 0 0 3px var(--acc)}
+.fm .sk-sep{flex:1}
+.fm .sk-size{width:40px;height:40px;border-radius:50%;border:none;background:var(--bg);display:grid;place-items:center;cursor:pointer;box-shadow:0 0 0 1px var(--line);padding:0}
+.fm .sk-size i{display:block;border-radius:50%;background:var(--ink)}
+.fm .sk-size.on{box-shadow:0 0 0 3px var(--acc)}
+.fm .sk-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+.fm .sk-actions .btn{margin-top:0}
+.fm .refsheet{position:fixed;inset:0;z-index:55;background:var(--bg);overflow:auto;padding:18px 16px 90px}
+.fm .refsheet > *{max-width:760px;margin-left:auto;margin-right:auto}
+.fm .nbtabs{margin:4px 0 12px;flex-wrap:nowrap;overflow-x:auto;padding-bottom:4px}
+.fm .nbtabs .chip{flex:0 0 auto}
+.fm .nbbar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.fm .nbbar .btn{margin-top:0}
+.fm .nbmanage .trow{display:flex;gap:8px;align-items:center;margin-bottom:8px}
+.fm .nbmanage{margin-bottom:12px}
+.fm .entry{background:var(--card);border-radius:24px;padding:16px;margin:0 0 12px;box-shadow:0 1px 2px rgba(60,40,20,.06),0 6px 18px rgba(60,40,20,.05)}
+.fm .entry.editing{box-shadow:0 0 0 2px var(--acc)}
+.fm .ehead{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.fm .ehead h3{font-family:var(--serif);font-size:19px;margin:0;font-weight:600;line-height:1.25}
+.fm .etext{white-space:pre-wrap;margin:6px 0 10px;font-size:15px;line-height:1.5}
+.fm .egal{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;margin-bottom:12px}
+.fm .egal img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:14px;cursor:zoom-in;display:block}
+.fm .eactions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;align-items:center}
+.fm .eactions .btn{margin-top:0}
+.fm a.btn{text-decoration:none}
+.fm .seg.two{margin:4px 0 14px}
+.fm .seg.two button{flex:1}
+/* Produkte, Preislisten, Karteikarten-Bilder */
+.fm .prow2{display:grid;grid-template-columns:1fr 38px 38px 38px;gap:8px;align-items:center;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.fm .prow2 .pname{grid-column:1/-1}
+.fm .icon:disabled{opacity:.3;cursor:default}
+.fm .prod{display:grid;grid-template-columns:64px 1fr auto;gap:10px;align-items:start;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.fm .pthumb{width:64px;height:64px;border-radius:18px;background:var(--bg);box-shadow:0 0 0 1px var(--line);display:grid;place-items:center;color:var(--muted);cursor:pointer;overflow:hidden}
+.fm .pthumb img{width:100%;height:100%;object-fit:cover;display:block}
+.fm .pfields{display:flex;flex-direction:column;gap:8px;min-width:0}
+.fm .pctl{display:flex;flex-direction:column;gap:2px}
+.fm .prodprev{display:flex;align-items:center;gap:12px;margin:-4px 0 12px;background:var(--card);border-radius:18px;padding:8px 12px;box-shadow:0 0 0 1px var(--line)}
+.fm .prodprev img{width:64px;height:64px;object-fit:cover;border-radius:14px;display:block}
+.fm .prodprev span{font-weight:650}
+.fm .kimgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px;padding:12px 0;border-top:1px solid var(--line)}
+.fm .kimgs img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:14px;display:block}
+.fm .kcard.k{border-top-color:var(--c-k)}
+.fm .kcard.k .karch{color:var(--c-k)}
+.fm .kcard.g{border-top-color:var(--c-g)}
+.fm .kcard.g .karch{color:var(--c-g)}
+.fm .kcard.k .kchips span{background:var(--c-k-l)}
+.fm .kcard.g .kchips span{background:var(--c-g-l)}
+/* Dunkelmodus */
+.fm.dark{color-scheme:dark}
+.fm.dark .pill.early{background:#4A3517;color:#F2C879}
+.fm.dark .note.warn{color:#F2C879}
+.fm.dark .btn.danger{color:#F08A97}
+.fm.dark .hero{box-shadow:0 12px 30px rgba(0,0,0,.5)}
+.fm.dark .card,.fm.dark .entry,.fm.dark .accd{box-shadow:0 0 0 1px var(--line)}
+/* Desktop: Seitenleiste, Spalten */
+.fm .dash,.fm .dcol,.fm .cardgrid{display:block}
+.fm .brand{display:none}
+.fm nav button.icononly span{display:none}
+.fm.wide .dash{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:0 36px;align-items:start}
+.fm.wide .cardgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}
+.fm.wide .cardgrid .card{margin:0}
+.fm.wide main{max-width:none;margin:0 0 0 252px;padding:40px clamp(32px,4.5vw,76px) 90px}
+.fm.wide main > *{max-width:1240px;margin-left:auto;margin-right:auto}
+.fm.wide.editing main{margin-left:0}
+.fm.wide.editing main > *{max-width:1040px}
+.fm.wide nav{left:0;top:0;bottom:0;right:auto;width:252px;max-width:none;margin:0;border-radius:0 34px 34px 0;flex-direction:column;justify-content:flex-start;padding:28px 14px;gap:4px;box-shadow:10px 0 36px rgba(60,40,20,.10)}
+.fm.wide .brand{display:flex;align-items:center;gap:12px;padding:0 10px 22px}
+.fm.wide .brand-sprig{width:30px;height:44px;color:var(--c-j)}
+.fm.wide .brand strong{font-family:var(--serif);font-size:22px;display:block;font-style:italic;font-weight:500}
+.fm.wide .brand small{color:var(--muted);font-size:12px}
+.fm.wide nav button{flex:none;flex-direction:row;justify-content:flex-start;gap:12px;width:100%;padding:6px 10px;min-height:54px;font-size:15px;letter-spacing:0;border-radius:18px}
+.fm.wide nav button.icononly{flex:none}
+.fm.wide nav button.icononly span{display:inline}
+.fm.wide nav button svg{padding:8px 12px}
+.fm.wide nav button.on{background:var(--acc-l)}
+.fm.wide .actionbar{left:252px;max-width:720px}
+.fm.wide.editing .actionbar{left:0}
+.fm.wide .editorbody > div{columns:2;column-gap:40px}
+.fm.wide .editorbody > div > *{break-inside:avoid}
+.fm.wide .editorbody .sect,.fm.wide .editorbody .ratecard,.fm.wide .editorbody .accd,.fm.wide .editorbody .gradebox{break-inside:avoid}
+.fm.wide .settings > div:not(.seg){columns:2;column-gap:28px}
+.fm.wide .settings .accd{break-inside:avoid}
+.fm.wide .hero-n{font-size:96px}
+.fm.wide .title{font-size:46px}
+.fm.wide .stats strong{font-size:28px}
+.fm.wide .refsheet{padding:30px}
+
+.fm .lensrow{background:var(--bg);border-radius:18px;padding:10px 12px;margin-top:10px;display:flex;flex-direction:column;gap:8px}
+.fm .lensname{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.fm .lensname strong{font-family:var(--serif);font-size:18px}
+.fm .lensname .btn{margin-top:0}
+.fm .lensrow input{background:var(--card)}
 @media (prefers-reduced-motion:reduce){.fm *{transition:none!important}}
 `;
 ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App, null));
