@@ -157,6 +157,7 @@ const Pencil = mkIcon(React.createElement(React.Fragment, null,
 const BookOpen = mkIcon(React.createElement(React.Fragment, null,
     React.createElement("path", { d: "M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" }),
     React.createElement("path", { d: "M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" })));
+const Zap = mkIcon(React.createElement("path", { d: "M13 2 3 14h9l-1 8 10-12h-9l1-8z" }));
 const Upload = mkIcon(React.createElement(React.Fragment, null,
     React.createElement("path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" }),
     React.createElement("polyline", { points: "17 8 12 3 7 8" }),
@@ -164,7 +165,9 @@ const Upload = mkIcon(React.createElement(React.Fragment, null,
 /* ───────────── Hilfsfunktionen ───────────── */
 const uid = () => Math.random().toString(36).slice(2, 9);
 const eur = (n) => (n || 0).toLocaleString("de-DE", { style: "currency", currency: "EUR", maximumFractionDigits: 2, minimumFractionDigits: 0 });
-const todayStr = () => new Date().toISOString().slice(0, 10);
+const localDay = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+const todayStr = () => localDay(new Date());
+const addDays = (d, n) => { const dt = new Date(d + "T00:00:00"); dt.setDate(dt.getDate() + n); return localDay(dt); };
 const parseDate = (d) => (d ? new Date(d + "T00:00:00") : null);
 const lines = (t) => (t || "").split("\n").map((x) => x.trim()).filter(Boolean);
 const byDate = (a, b) => (a.date || "9999").localeCompare(b.date || "9999");
@@ -248,7 +251,9 @@ const JOB_STATUS = ["Anfrage", "Gebucht", "Erledigt", "Geliefert", "Bezahlt"];
 const isEarly = (s) => ["Anfrage", "Angebot"].includes(s);
 const WORK_STATUS = ["Anfrage", "Angenommen", "In Arbeit", "Fertig", "Übergeben", "Bezahlt"];
 const BUY_STATUS = ["Geplant", "Gekauft", "Verworfen"];
-const workOpen = (w) => w.kind !== "neu" && !["Übergeben", "Bezahlt"].includes(w.status);
+const isCalcOnly = (k) => k === "neu" || k === "strom";
+const calcStatus = (k) => (k === "strom" ? ["Entwurf", "Aktuell", "Archiv"] : BUY_STATUS);
+const workOpen = (w) => !isCalcOnly(w.kind) && !["Übergeben", "Bezahlt"].includes(w.status);
 const statusTone = (s) => (["Geliefert", "Bezahlt", "Übergeben", "Gekauft"].includes(s) ? "done" : ["Anfrage", "Angebot", "Geplant", "Verworfen"].includes(s) ? "early" : "active");
 const mk = (k, l, opts) => ({ k, l, o: opts.map(([label, pts], i) => ({ id: `${k}${i}`, label, pts })) });
 const DEFAULT_DIFF = [
@@ -300,6 +305,8 @@ const DEFAULT_SETTINGS = {
         { id: "fotobox", name: "Fotobox-Miete", price: 450 },
         { id: "sonstiges", name: "Sonstiges", price: 0 },
     ],
+    postSteps: [{ id: "sort", name: "Bilder sichten und sortieren", days: 7 }, { id: "preset", name: "Presets und Bearbeitung", days: 14 }],
+    workChecklistText: "Material und Rohlinge bereitlegen\nDatei oder Motiv vorbereiten\nProduzieren\nPrüfen und verpacken\nÜbergeben",
     mig6: true,
     mode: "light",
     layout: "auto",
@@ -315,10 +322,12 @@ const DEFAULT_SETTINGS = {
     ],
     machines: {
         druck: {
-            price: 400, years: 4, hrsYear: 500, maint: 10, watt: 150, failPct: 10,
+            price: 400, years: 4, hrsYear: 500, maint: 10, watt: 150, failPct: 10, peakW: 600, heatMin: 6, standbyW: 8, onHours: 0,
             materials: [
-                { id: "pla", name: "PLA", price: 20 }, { id: "petg", name: "PETG", price: 22 },
-                { id: "asa", name: "ASA", price: 30 }, { id: "abs", name: "ABS", price: 24 },
+                { id: "pla", name: "PLA", price: 20, nozzle: 205, bed: 60, factor: 1 },
+                { id: "petg", name: "PETG", price: 22, nozzle: 240, bed: 80, factor: 1.25 },
+                { id: "asa", name: "ASA", price: 30, nozzle: 260, bed: 100, factor: 1.5 },
+                { id: "abs", name: "ABS", price: 24, nozzle: 250, bed: 100, factor: 1.4 },
             ],
         },
         stick: {
@@ -402,7 +411,7 @@ function machineRate(s) {
     const labor = (s.wage || 0) * (1 + (s.afterHours || 0));
     return { dep, interest, running, perYear, machine, labor, total: machine + labor, invest: gear.reduce((a, g) => a + (g.price || 0), 0) };
 }
-const APP_VERSION = "Version 10 · 23.10.2026";
+const APP_VERSION = "Version 11 · 27.10.2026";
 const MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
 const getImages = (g) => g.images || (g.image ? [g.image] : []);
 /* ───────────── Preisberechnung ───────────── */
@@ -503,10 +512,11 @@ function shrinkImage(file, max = 760) {
 }
 /* ───────────── UI-Bausteine ───────────── */
 function NumInput({ value, onChange, suffix }) {
-    const [t, setT] = useState(String(value !== null && value !== void 0 ? value : 0));
+    const show = (v) => (v ? String(v) : "");
+    const [t, setT] = useState(show(value));
     useEffect(() => {
         if (parseFloat(t.replace(",", ".")) !== value && !(t === "" && !value))
-            setT(String(value !== null && value !== void 0 ? value : 0));
+            setT(show(value));
         // eslint-disable-next-line
     }, [value]);
     return (React.createElement("span", { className: "numwrap" },
@@ -584,50 +594,394 @@ function Checklist({ items, onChange }) {
                 React.createElement(Plus, { size: 16 }),
                 " Hinzuf\u00FCgen"))));
 }
-function PriceListEditor({ items, onChange, noun, suffix = "€" }) {
+function PriceListEditor({ items, onChange, noun, suffix = "€", valueKey = "price" }) {
     const upd = (id, p) => onChange(items.map((x) => (x.id === id ? { ...x, ...p } : x)));
     return (React.createElement("div", null,
         items.map((it, i) => (React.createElement("div", { className: "prow2", key: it.id },
             React.createElement("input", { className: "pname", value: it.name, placeholder: "Name", onChange: (e) => upd(it.id, { name: e.target.value }) }),
-            React.createElement(NumInput, { value: it.price, suffix: suffix, onChange: (v) => upd(it.id, { price: v }) }),
+            React.createElement(NumInput, { value: it[valueKey], suffix: suffix, onChange: (v) => upd(it.id, { [valueKey]: v }) }),
             React.createElement("button", { className: "icon", "aria-label": "nach oben", disabled: i === 0, onClick: () => onChange(moveItem(items, i, -1)) },
                 React.createElement(ChevronUp, { size: 18 })),
             React.createElement("button", { className: "icon", "aria-label": "nach unten", disabled: i === items.length - 1, onClick: () => onChange(moveItem(items, i, 1)) },
                 React.createElement(ChevronDown, { size: 18 })),
             React.createElement("button", { className: "icon", "aria-label": "entfernen", onClick: () => onChange(items.filter((x) => x.id !== it.id)) },
                 React.createElement(X, { size: 16 }))))),
-        React.createElement("button", { className: "btn small soft", onClick: () => onChange([...items, { id: uid(), name: "", price: 0 }]) },
+        React.createElement("button", { className: "btn small soft", onClick: () => onChange([...items, { id: uid(), name: "", [valueKey]: 0 }]) },
             React.createElement(Plus, { size: 16 }),
             " ",
             noun,
             " hinzuf\u00FCgen")));
 }
 /* ───────────── Bilder, Skizzen, Notizbuch ───────────── */
-function SketchPad({ onSave, onClose }) {
+const parseSketch = (src) => {
+    const m = /#sk=(.*)$/.exec(src || "");
+    if (!m)
+        return null;
+    try {
+        const o = JSON.parse(decodeURIComponent(m[1]));
+        return Array.isArray(o) ? o : null;
+    }
+    catch (e) {
+        return null;
+    }
+};
+function SketchPad({ onSave, onClose, initial }) {
     const ref = useRef(null);
+    const [tool, setTool] = useState(initial && initial.length ? "edit" : "pen");
     const [color, setColor] = useState("#222222");
     const [size, setSize] = useState(5);
-    const drawing = useRef(false);
-    const last = useRef(null);
+    const [grid, setGrid] = useState(false);
+    const [showMid, setShowMid] = useState(true);
+    const [objs, setObjs] = useState(initial || []);
+    const [draft, setDraft] = useState(null);
+    const [target, setTarget] = useState(null);
+    const [sel, setSel] = useState(null);
+    const [guide, setGuide] = useState(null);
+    const [val, setVal] = useState("");
+    const [unit, setUnit] = useState("mm");
+    const [histN, setHistN] = useState(0);
+    const downRef = useRef(false);
+    const drag = useRef(null);
+    const hist = useRef([]);
+    const objsRef = useRef(objs);
+    objsRef.current = objs;
+    const T = 18;
     useEffect(() => {
-        const c = ref.current, ctx = c.getContext("2d");
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, c.width, c.height);
+        const y = window.scrollY || 0;
+        const b = document.body;
+        const prev = { position: b.style.position, top: b.style.top, left: b.style.left, right: b.style.right, width: b.style.width, overflow: b.style.overflow };
+        b.style.position = "fixed";
+        b.style.top = `-${y}px`;
+        b.style.left = "0";
+        b.style.right = "0";
+        b.style.width = "100%";
+        b.style.overflow = "hidden";
+        const c = ref.current;
+        const stop = (e) => e.preventDefault();
+        if (c) {
+            c.addEventListener("touchstart", stop, { passive: false });
+            c.addEventListener("touchmove", stop, { passive: false });
+        }
+        return () => {
+            Object.assign(b.style, prev);
+            window.scrollTo(0, y);
+            if (c) {
+                c.removeEventListener("touchstart", stop);
+                c.removeEventListener("touchmove", stop);
+            }
+        };
     }, []);
-    const pos = (e) => {
-        const c = ref.current, r = c.getBoundingClientRect();
-        return [((e.clientX - r.left) * c.width) / r.width, ((e.clientY - r.top) * c.height) / r.height];
+    const pushHist = () => { hist.current.push(JSON.stringify(objsRef.current)); if (hist.current.length > 60)
+        hist.current.shift(); setHistN(hist.current.length); };
+    const undo = () => {
+        const last = hist.current.pop();
+        setHistN(hist.current.length);
+        if (last) {
+            setObjs(JSON.parse(last));
+            setSel(null);
+            setTarget(null);
+        }
     };
-    const line = (a, b) => {
-        const ctx = ref.current.getContext("2d");
-        ctx.strokeStyle = color;
-        ctx.lineWidth = size * 1.6;
+    const distPts = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+    const edgesOf = (o) => {
+        if (o.t === "line")
+            return [{ p: o.a, q: o.b }];
+        if (o.t === "rect") {
+            const [x1, y1] = o.a, [x2, y2] = o.b;
+            return [{ p: [x1, y1], q: [x2, y1] }, { p: [x2, y1], q: [x2, y2] }, { p: [x2, y2], q: [x1, y2] }, { p: [x1, y2], q: [x1, y1] }];
+        }
+        return [];
+    };
+    const segDist = (pt, p, q) => {
+        const dx = q[0] - p[0], dy = q[1] - p[1];
+        const l2 = dx * dx + dy * dy || 1;
+        const t = Math.max(0, Math.min(1, ((pt[0] - p[0]) * dx + (pt[1] - p[1]) * dy) / l2));
+        return Math.hypot(pt[0] - (p[0] + t * dx), pt[1] - (p[1] + t * dy));
+    };
+    const centerOf = (o) => {
+        if (o.t === "rect" || o.t === "line")
+            return [(o.a[0] + o.b[0]) / 2, (o.a[1] + o.b[1]) / 2];
+        if (o.t === "circle")
+            return o.a;
+        return null;
+    };
+    const translate = (o, dx, dy) => {
+        const mv = (q) => [q[0] + dx, q[1] + dy];
+        if (o.t === "pen")
+            return { ...o, pts: o.pts.map(mv) };
+        return { ...o, a: mv(o.a), b: mv(o.b) };
+    };
+    const handlesOf = (o) => {
+        if (o.t === "line")
+            return [o.a, o.b];
+        if (o.t === "rect")
+            return [o.a, o.b, [o.a[0], o.b[1]], [o.b[0], o.a[1]]];
+        if (o.t === "circle")
+            return [o.b];
+        return [];
+    };
+    const snapGrid = (p) => (grid ? [Math.round(p[0] / 36) * 36, Math.round(p[1] / 36) * 36] : p);
+    const snapToCenters = (c, skip) => {
+        let dx = 0, dy = 0, gx = null, gy = null, ix = -1, iy = -1, bx = T, by = T;
+        objsRef.current.forEach((o, i) => {
+            if (i === skip)
+                return;
+            const k = centerOf(o);
+            if (!k)
+                return;
+            const ddx = k[0] - c[0], ddy = k[1] - c[1];
+            if (Math.abs(ddx) < bx) {
+                bx = Math.abs(ddx);
+                dx = ddx;
+                gx = k[0];
+                ix = i;
+            }
+            if (Math.abs(ddy) < by) {
+                by = Math.abs(ddy);
+                dy = ddy;
+                gy = k[1];
+                iy = i;
+            }
+        });
+        return { dx, dy, guide: gx !== null || gy !== null ? { x: gx, y: gy, both: ix >= 0 && ix === iy } : null };
+    };
+    const pickObj = (pt) => {
+        const list = objsRef.current;
+        for (let i = list.length - 1; i >= 0; i--) {
+            const o = list[i];
+            if (o.t === "pen") {
+                if (Math.min(...o.pts.map((q) => distPts(pt, q))) < 18)
+                    return i;
+            }
+            else if (o.t === "line") {
+                if (segDist(pt, o.a, o.b) < 22)
+                    return i;
+            }
+            else if (o.t === "rect") {
+                const inside = pt[0] >= Math.min(o.a[0], o.b[0]) - 8 && pt[0] <= Math.max(o.a[0], o.b[0]) + 8 && pt[1] >= Math.min(o.a[1], o.b[1]) - 8 && pt[1] <= Math.max(o.a[1], o.b[1]) + 8;
+                if (inside)
+                    return i;
+            }
+            else if (o.t === "circle") {
+                if (distPts(pt, o.a) <= distPts(o.a, o.b) + 12)
+                    return i;
+            }
+        }
+        return null;
+    };
+    const nearest = (pt) => {
+        let best = null;
+        objs.forEach((o, oi) => {
+            if (o.t === "pen") {
+                const d = Math.min(...o.pts.map((q) => distPts(pt, q)));
+                if (!best || d < best.d)
+                    best = { d, oi, edge: 0, kind: "pen" };
+            }
+            else if (o.t === "circle") {
+                const d = Math.abs(distPts(pt, o.a) - distPts(o.a, o.b));
+                if (!best || d < best.d)
+                    best = { d, oi, edge: 0, kind: "circle" };
+            }
+            else {
+                edgesOf(o).forEach((e, ei) => {
+                    const d = segDist(pt, e.p, e.q);
+                    if (!best || d < best.d)
+                        best = { d, oi, edge: ei, kind: o.t };
+                });
+            }
+        });
+        return best && best.d < 34 ? best : null;
+    };
+    const arrowAt = (ctx, tip, ux, uy) => {
+        const L = 15, W = 7;
+        ctx.beginPath();
+        ctx.moveTo(tip[0], tip[1]);
+        ctx.lineTo(tip[0] - ux * L - uy * W, tip[1] - uy * L + ux * W);
+        ctx.lineTo(tip[0] - ux * L + uy * W, tip[1] - uy * L - ux * W);
+        ctx.closePath();
+        ctx.fill();
+    };
+    const dimLine = (ctx, p, q, text, side) => {
+        const dx = q[0] - p[0], dy = q[1] - p[1], L = Math.hypot(dx, dy) || 1;
+        const ux = dx / L, uy = dy / L, nx = -uy, ny = ux, off = 34 * side;
+        const p2 = [p[0] + nx * off, p[1] + ny * off], q2 = [q[0] + nx * off, q[1] + ny * off];
+        if (side !== 0) {
+            ctx.beginPath();
+            ctx.moveTo(p[0] + nx * 6 * side, p[1] + ny * 6 * side);
+            ctx.lineTo(p2[0] + nx * 8 * side, p2[1] + ny * 8 * side);
+            ctx.moveTo(q[0] + nx * 6 * side, q[1] + ny * 6 * side);
+            ctx.lineTo(q2[0] + nx * 8 * side, q2[1] + ny * 8 * side);
+            ctx.stroke();
+        }
+        ctx.beginPath();
+        ctx.moveTo(p2[0], p2[1]);
+        ctx.lineTo(q2[0], q2[1]);
+        ctx.stroke();
+        arrowAt(ctx, p2, -ux, -uy);
+        arrowAt(ctx, q2, ux, uy);
+        const mx = (p2[0] + q2[0]) / 2 + (side === 0 ? 0 : nx * 16 * side), my = (p2[1] + q2[1]) / 2 + (side === 0 ? -20 : ny * 16 * side);
+        ctx.font = "bold 28px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        const w = ctx.measureText(text).width + 14;
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(mx - w / 2, my - 18, w, 36);
+        ctx.fillStyle = "#B4654A";
+        ctx.fillText(text, mx, my);
+    };
+    const paint = (ctx, o) => {
+        ctx.strokeStyle = o.c;
+        ctx.lineWidth = o.w * 1.6;
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
         ctx.beginPath();
-        ctx.moveTo(a[0], a[1]);
-        ctx.lineTo(b[0], b[1]);
+        if (o.t === "pen") {
+            o.pts.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])));
+            if (o.pts.length === 1)
+                ctx.lineTo(o.pts[0][0] + 0.1, o.pts[0][1]);
+        }
+        else if (o.t === "line") {
+            ctx.moveTo(o.a[0], o.a[1]);
+            ctx.lineTo(o.b[0], o.b[1]);
+        }
+        else if (o.t === "rect")
+            ctx.rect(o.a[0], o.a[1], o.b[0] - o.a[0], o.b[1] - o.a[1]);
+        else if (o.t === "circle")
+            ctx.arc(o.a[0], o.a[1], distPts(o.a, o.b), 0, Math.PI * 2);
         ctx.stroke();
+    };
+    const paintDim = (ctx, o, d) => {
+        ctx.strokeStyle = "#B4654A";
+        ctx.fillStyle = "#B4654A";
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = "butt";
+        if (o.t === "circle") {
+            const r = distPts(o.a, o.b);
+            dimLine(ctx, [o.a[0] - r, o.a[1]], [o.a[0] + r, o.a[1]], d.text, 0);
+            return;
+        }
+        const seg = edgesOf(o)[d.edge];
+        if (!seg)
+            return;
+        let side = 1;
+        if (o.t === "rect") {
+            const c = centerOf(o), m = [(seg.p[0] + seg.q[0]) / 2, (seg.p[1] + seg.q[1]) / 2];
+            const dx = seg.q[0] - seg.p[0], dy = seg.q[1] - seg.p[1], L = Math.hypot(dx, dy) || 1;
+            side = ((m[0] - c[0]) * (-dy / L) + (m[1] - c[1]) * (dx / L)) >= 0 ? 1 : -1;
+        }
+        dimLine(ctx, seg.p, seg.q, d.text, side);
+    };
+    const outline = (ctx, o, edge) => {
+        ctx.beginPath();
+        if (o.t === "circle")
+            ctx.arc(o.a[0], o.a[1], distPts(o.a, o.b), 0, Math.PI * 2);
+        else if (o.t === "pen")
+            o.pts.forEach((q, i) => (i ? ctx.lineTo(q[0], q[1]) : ctx.moveTo(q[0], q[1])));
+        else if (edge != null) {
+            const s = edgesOf(o)[edge];
+            if (s) {
+                ctx.moveTo(s.p[0], s.p[1]);
+                ctx.lineTo(s.q[0], s.q[1]);
+            }
+        }
+        else if (o.t === "rect")
+            ctx.rect(o.a[0], o.a[1], o.b[0] - o.a[0], o.b[1] - o.a[1]);
+        else {
+            ctx.moveTo(o.a[0], o.a[1]);
+            ctx.lineTo(o.b[0], o.b[1]);
+        }
+        ctx.stroke();
+    };
+    useEffect(() => {
+        const c = ref.current;
+        if (!c)
+            return;
+        const ctx = c.getContext("2d");
+        ctx.setLineDash([]);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, c.width, c.height);
+        if (grid) {
+            ctx.strokeStyle = "#e6e6e6";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for (let x = 0; x <= c.width; x += 36) {
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, c.height);
+            }
+            for (let y = 0; y <= c.height; y += 36) {
+                ctx.moveTo(0, y);
+                ctx.lineTo(c.width, y);
+            }
+            ctx.stroke();
+        }
+        const all = draft ? [...objs, draft] : objs;
+        all.forEach((o) => paint(ctx, o));
+        all.forEach((o) => (o.dims || []).forEach((d) => paintDim(ctx, o, d)));
+        if (showMid) {
+            ctx.strokeStyle = "#0B7F72";
+            ctx.lineWidth = 2;
+            ctx.globalAlpha = 0.7;
+            all.forEach((o) => { if (o.t === "rect" || o.t === "circle") {
+                const k = centerOf(o);
+                ctx.beginPath();
+                ctx.moveTo(k[0] - 9, k[1]);
+                ctx.lineTo(k[0] + 9, k[1]);
+                ctx.moveTo(k[0], k[1] - 9);
+                ctx.lineTo(k[0], k[1] + 9);
+                ctx.stroke();
+            } });
+            ctx.globalAlpha = 1;
+        }
+        if (sel != null && objs[sel]) {
+            const o = objs[sel];
+            ctx.strokeStyle = "#0B7F72";
+            ctx.lineWidth = 9;
+            ctx.globalAlpha = 0.28;
+            ctx.lineJoin = "round";
+            outline(ctx, o);
+            ctx.globalAlpha = 1;
+            handlesOf(o).forEach((h) => { ctx.beginPath(); ctx.arc(h[0], h[1], 12, 0, Math.PI * 2); ctx.fillStyle = "#ffffff"; ctx.fill(); ctx.strokeStyle = "#0B7F72"; ctx.lineWidth = 4; ctx.stroke(); });
+        }
+        if (target && objs[target.oi]) {
+            ctx.strokeStyle = "#0B7F72";
+            ctx.lineWidth = 7;
+            ctx.globalAlpha = 0.45;
+            outline(ctx, objs[target.oi], target.edge);
+            ctx.globalAlpha = 1;
+        }
+        if (guide) {
+            ctx.strokeStyle = "#D6336C";
+            ctx.lineWidth = 2;
+            ctx.setLineDash([10, 8]);
+            ctx.beginPath();
+            if (guide.x !== null) {
+                ctx.moveTo(guide.x, 0);
+                ctx.lineTo(guide.x, c.height);
+            }
+            if (guide.y !== null) {
+                ctx.moveTo(0, guide.y);
+                ctx.lineTo(c.width, guide.y);
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
+            if (guide.both) {
+                ctx.beginPath();
+                ctx.arc(guide.x, guide.y, 15, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.font = "bold 24px sans-serif";
+                ctx.textAlign = "left";
+                ctx.textBaseline = "middle";
+                const w = ctx.measureText("Mitte").width + 12;
+                ctx.fillStyle = "#ffffff";
+                ctx.fillRect(guide.x + 20, guide.y - 38, w, 30);
+                ctx.fillStyle = "#D6336C";
+                ctx.fillText("Mitte", guide.x + 26, guide.y - 23);
+            }
+        }
+    });
+    const pos = (e) => {
+        const c = ref.current, r = c.getBoundingClientRect();
+        return [((e.clientX - r.left) * c.width) / r.width, ((e.clientY - r.top) * c.height) / r.height];
     };
     const down = (e) => {
         e.preventDefault();
@@ -635,34 +989,225 @@ function SketchPad({ onSave, onClose }) {
             ref.current.setPointerCapture(e.pointerId);
         }
         catch (err) { /* egal */ }
-        drawing.current = true;
-        last.current = pos(e);
-        line(last.current, last.current);
+        downRef.current = true;
+        const p0 = pos(e);
+        if (tool === "edit") {
+            const o = sel != null ? objsRef.current[sel] : null;
+            if (o) {
+                const hi = handlesOf(o).findIndex((h) => distPts(h, p0) < 30);
+                if (hi >= 0) {
+                    pushHist();
+                    drag.current = { kind: "handle", oi: sel, hi };
+                    return;
+                }
+            }
+            const hit = pickObj(p0);
+            if (hit !== null) {
+                setSel(hit);
+                pushHist();
+                drag.current = { kind: "move", oi: hit, start: p0, orig: objsRef.current[hit] };
+            }
+            else {
+                setSel(null);
+                drag.current = null;
+            }
+            return;
+        }
+        if (tool === "pen") {
+            setDraft({ t: "pen", c: color, w: size, pts: [p0] });
+            return;
+        }
+        if (["line", "rect", "circle"].includes(tool)) {
+            let p = snapGrid(p0);
+            const sn = snapToCenters(p, -1);
+            if (sn.guide) {
+                p = [p[0] + sn.dx, p[1] + sn.dy];
+                setGuide(sn.guide);
+            }
+            setDraft({ t: tool, c: color, w: size, a: p, b: p });
+        }
     };
-    const move = (e) => { if (!drawing.current)
-        return; const p = pos(e); line(last.current, p); last.current = p; };
-    const up = () => { drawing.current = false; };
-    const clear = () => { const c = ref.current, ctx = c.getContext("2d"); ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, c.width, c.height); };
-    const colors = ["#222222", "#B4654A", "#627A58", "#567281", "#ffffff"];
+    const move = (e) => {
+        if (!downRef.current)
+            return;
+        const p = pos(e);
+        if (tool === "edit") {
+            const d = drag.current;
+            if (!d)
+                return;
+            if (d.kind === "move") {
+                let dx = p[0] - d.start[0], dy = p[1] - d.start[1];
+                let g = null;
+                const c = centerOf(d.orig);
+                if (c) {
+                    const sn = snapToCenters([c[0] + dx, c[1] + dy], d.oi);
+                    if (sn.guide) {
+                        dx += sn.dx;
+                        dy += sn.dy;
+                        g = sn.guide;
+                    }
+                }
+                if (!g && grid && c) {
+                    const t2 = snapGrid([c[0] + dx, c[1] + dy]);
+                    dx = t2[0] - c[0];
+                    dy = t2[1] - c[1];
+                }
+                setGuide(g);
+                const moved = translate(d.orig, dx, dy);
+                setObjs((all) => all.map((o, i) => (i === d.oi ? moved : o)));
+            }
+            else {
+                let q = snapGrid(p);
+                setObjs((all) => all.map((o, i) => {
+                    if (i !== d.oi)
+                        return o;
+                    if (o.t === "line")
+                        return d.hi === 0 ? { ...o, a: q } : { ...o, b: q };
+                    if (o.t === "circle")
+                        return { ...o, b: q };
+                    if (o.t === "rect") {
+                        if (d.hi === 0)
+                            return { ...o, a: q };
+                        if (d.hi === 1)
+                            return { ...o, b: q };
+                        if (d.hi === 2)
+                            return { ...o, a: [q[0], o.a[1]], b: [o.b[0], q[1]] };
+                        return { ...o, a: [o.a[0], q[1]], b: [q[0], o.b[1]] };
+                    }
+                    return o;
+                }));
+            }
+            return;
+        }
+        setDraft((d) => (d ? (d.t === "pen" ? { ...d, pts: [...d.pts, p] } : { ...d, b: snapGrid(p) }) : d));
+    };
+    const up = (e) => {
+        if (!downRef.current)
+            return;
+        downRef.current = false;
+        const p = pos(e);
+        drag.current = null;
+        setGuide(null);
+        if (draft) {
+            const ok = draft.t === "pen" ? true : distPts(draft.a, draft.b) > 6;
+            if (ok) {
+                pushHist();
+                setObjs((o) => [...o, draft]);
+            }
+            setDraft(null);
+            return;
+        }
+        if (tool === "dim") {
+            const hit = nearest(p);
+            if (hit && hit.kind !== "pen") {
+                setTarget(hit);
+                setVal("");
+            }
+            else
+                setTarget(null);
+        }
+        else if (tool === "erase") {
+            const hit = nearest(p);
+            if (hit) {
+                pushHist();
+                setObjs((o) => o.filter((_, i) => i !== hit.oi));
+                setSel(null);
+            }
+        }
+    };
+    const setDim = () => {
+        if (!target)
+            return;
+        const o = objs[target.oi];
+        const v = val.trim().replace(",", ".");
+        const text = v ? `${o.t === "circle" ? "Ø " : ""}${v} ${unit}` : "";
+        pushHist();
+        setObjs((all) => all.map((x, i) => {
+            if (i !== target.oi)
+                return x;
+            const rest = (x.dims || []).filter((d) => d.edge !== target.edge);
+            return { ...x, dims: text ? [...rest, { edge: target.edge, text }] : rest };
+        }));
+        setTarget(null);
+    };
+    const centerSel = () => {
+        const o = sel != null ? objs[sel] : null;
+        if (!o)
+            return;
+        const c = centerOf(o);
+        let best = null;
+        objs.forEach((q, i) => { if (i === sel)
+            return; const k = centerOf(q); if (!k)
+            return; const d = distPts(k, c); if (!best || d < best.d)
+            best = { d, k }; });
+        if (!best)
+            return;
+        pushHist();
+        const moved = translate(o, best.k[0] - c[0], best.k[1] - c[1]);
+        setObjs((all) => all.map((x, i) => (i === sel ? moved : x)));
+    };
+    const delSel = () => { if (sel == null)
+        return; pushHist(); setObjs((all) => all.filter((_, i) => i !== sel)); setSel(null); };
+    const colors = ["#222222", "#B4654A", "#627A58", "#567281"];
+    const tools = [["pen", "Stift"], ["line", "Linie"], ["rect", "Rechteck"], ["circle", "Kreis"], ["edit", "Verschieben"], ["dim", "Maß"], ["erase", "Löschen"]];
+    const hints = {
+        pen: "Mit dem Finger frei zeichnen.",
+        line: "Ziehen, um eine gerade Linie zu zeichnen.",
+        rect: "Ziehen, um ein Rechteck aufzuziehen. Der Startpunkt rastet an der Mitte anderer Formen ein.",
+        circle: "Vom Mittelpunkt nach außen ziehen. Der Mittelpunkt rastet an der Mitte anderer Formen ein.",
+        edit: "Tippe eine Form an und ziehe sie. Die weißen Punkte vergrößern oder verkleinern sie. Nähert sich die Mitte einer anderen Form, rastet sie ein und rosa Linien zeigen die Mitte.",
+        dim: "Tippe auf eine Linie, eine Rechteckkante oder einen Kreis. Dann gibst du das Maß ein.",
+        erase: "Tippe auf ein Objekt, um es zu löschen.",
+    };
+    const targetName = target ? ({ line: "die Linie", rect: ["die obere", "die rechte", "die untere", "die linke"][target.edge] + " Kante", circle: "den Kreis (Durchmesser)" }[target.kind] || "") : "";
+    const selObj = sel != null ? objs[sel] : null;
+    const canCenter = !!selObj && centerOf(selObj) && objs.some((q, i) => i !== sel && centerOf(q));
+    const save = () => {
+        const url = ref.current.toDataURL("image/jpeg", 0.82);
+        onSave(objs.length ? `${url}#sk=${encodeURIComponent(JSON.stringify(objs))}` : url);
+    };
     return (React.createElement("div", { className: "sketch", role: "dialog", "aria-label": "Skizze zeichnen" },
         React.createElement("div", { className: "sketch-in" },
-            React.createElement("strong", { className: "sk-title" }, "Skizze zeichnen"),
-            React.createElement("canvas", { ref: ref, width: 720, height: 720, onPointerDown: down, onPointerMove: move, onPointerUp: up, onPointerCancel: up }),
+            React.createElement("strong", { className: "sk-title" }, initial && initial.length ? "Skizze bearbeiten" : "Skizze zeichnen"),
+            React.createElement("div", { className: "chips sk-toolbar" }, tools.map(([k, l]) => React.createElement("button", { key: k, type: "button", className: "chip" + (tool === k ? " on" : ""), onClick: () => { setTool(k); setTarget(null); if (k !== "edit")
+                    setSel(null); } }, l))),
+            React.createElement("div", { className: "sk-stage" },
+                React.createElement("canvas", { ref: ref, width: 720, height: 720, onPointerDown: down, onPointerMove: move, onPointerUp: up, onPointerCancel: up })),
+            React.createElement("p", { className: "hint sk-hint" }, hints[tool]),
+            tool === "edit" && selObj && (React.createElement("div", { className: "sk-sel" },
+                React.createElement("button", { type: "button", className: "btn small soft", disabled: !canCenter, onClick: centerSel }, "Mittig zur n\u00E4chsten Form setzen"),
+                React.createElement("button", { type: "button", className: "btn small soft", onClick: delSel }, "Auswahl l\u00F6schen"))),
+            target && (React.createElement("div", { className: "sk-dim" },
+                React.createElement("strong", null,
+                    "Ma\u00DF f\u00FCr ",
+                    targetName),
+                React.createElement("div", { className: "sk-dimrow" },
+                    React.createElement("input", { inputMode: "decimal", autoFocus: true, value: val, placeholder: "z. B. 40", onChange: (e) => setVal(e.target.value), onKeyDown: (e) => e.key === "Enter" && setDim() }),
+                    ["mm", "cm", "m"].map((u) => React.createElement("button", { key: u, type: "button", className: "chip" + (unit === u ? " on" : ""), onClick: () => setUnit(u) }, u))),
+                React.createElement("div", { className: "sk-actions" },
+                    React.createElement("button", { type: "button", className: "btn small soft", onClick: () => setTarget(null) }, "Abbrechen"),
+                    React.createElement("button", { type: "button", className: "btn small", onClick: setDim },
+                        React.createElement(Check, { size: 16 }),
+                        " Ma\u00DF setzen")))),
             React.createElement("div", { className: "sk-tools" },
-                colors.map((c) => (React.createElement("button", { key: c, type: "button", className: "sk-col" + (color === c ? " on" : ""), style: { background: c }, "aria-label": c === "#ffffff" ? "Radierer" : "Farbe", onClick: () => setColor(c) }))),
+                colors.map((c) => (React.createElement("button", { key: c, type: "button", className: "sk-col" + (color === c ? " on" : ""), style: { background: c }, "aria-label": "Farbe", onClick: () => setColor(c) }))),
                 React.createElement("span", { className: "sk-sep" }),
                 [2, 5, 10].map((n) => (React.createElement("button", { key: n, type: "button", className: "sk-size" + (size === n ? " on" : ""), "aria-label": `Stärke ${n}`, onClick: () => setSize(n) },
-                    React.createElement("i", { style: { width: n * 2 + 2, height: n * 2 + 2 } }))))),
+                    React.createElement("i", { style: { width: n * 2 + 2, height: n * 2 + 2 } })))),
+                React.createElement("button", { type: "button", className: "chip" + (showMid ? " on" : ""), onClick: () => setShowMid(!showMid) }, "Mitte"),
+                React.createElement("button", { type: "button", className: "chip" + (grid ? " on" : ""), onClick: () => setGrid(!grid) }, "Raster")),
             React.createElement("div", { className: "sk-actions" },
-                React.createElement("button", { type: "button", className: "btn small soft", onClick: clear }, "Leeren"),
+                React.createElement("button", { type: "button", className: "btn small soft", onClick: undo, disabled: histN === 0 }, "R\u00FCckg\u00E4ngig"),
+                React.createElement("button", { type: "button", className: "btn small soft", onClick: () => { pushHist(); setObjs([]); setTarget(null); setSel(null); } }, "Leeren"),
                 React.createElement("button", { type: "button", className: "btn small soft", onClick: onClose }, "Abbrechen"),
-                React.createElement("button", { type: "button", className: "btn small", onClick: () => onSave(ref.current.toDataURL("image/jpeg", 0.82)) },
+                React.createElement("button", { type: "button", className: "btn small", disabled: !!target, onClick: save },
                     React.createElement(Check, { size: 16 }),
                     " \u00DCbernehmen")))));
 }
 function GalleryField({ images, onChange, max = 8, sketch = false }) {
     const [big, setBig] = useState("");
     const [sk, setSk] = useState(false);
+    const [ed, setEd] = useState(null);
     const pick = async (e) => {
         const files = Array.from(e.target.files || []).slice(0, max - images.length);
         e.target.value = "";
@@ -683,7 +1228,9 @@ function GalleryField({ images, onChange, max = 8, sketch = false }) {
             images.map((src, i) => (React.createElement("div", { className: "gthumb", key: i },
                 React.createElement("img", { src: src, alt: `Bild ${i + 1}`, onClick: () => setBig(src) }),
                 React.createElement("button", { type: "button", className: "gx", "aria-label": "Bild entfernen", onClick: () => onChange(images.filter((_, n) => n !== i)) },
-                    React.createElement(X, { size: 14 }))))),
+                    React.createElement(X, { size: 14 })),
+                parseSketch(src) && React.createElement("button", { type: "button", className: "gx edit", "aria-label": "Skizze bearbeiten", onClick: () => setEd({ i, objs: parseSketch(src) }) },
+                    React.createElement(Pencil, { size: 14 }))))),
             images.length < max && (React.createElement("label", { className: "gadd" },
                 React.createElement(ImagePlus, { size: 24 }),
                 React.createElement("span", null, "Bild hinzuf\u00FCgen"),
@@ -695,7 +1242,8 @@ function GalleryField({ images, onChange, max = 8, sketch = false }) {
             React.createElement("img", { src: big, alt: "Vergr\u00F6\u00DFertes Bild" }),
             React.createElement("button", { className: "gx big", "aria-label": "Schlie\u00DFen" },
                 React.createElement(X, { size: 20 })))),
-        sk && React.createElement(SketchPad, { onClose: () => setSk(false), onSave: (d) => { onChange([...images, d]); setSk(false); } })));
+        sk && React.createElement(SketchPad, { onClose: () => setSk(false), onSave: (d) => { onChange([...images, d]); setSk(false); } }),
+        ed && React.createElement(SketchPad, { initial: ed.objs, onClose: () => setEd(null), onSave: (d) => { onChange(images.map((x, n) => (n === ed.i ? d : x))); setEd(null); } })));
 }
 function moveItem(items, i, d) {
     const j = i + d;
@@ -704,6 +1252,27 @@ function moveItem(items, i, d) {
     const a = [...items];
     [a[i], a[j]] = [a[j], a[i]];
     return a;
+}
+function MaterialEditor({ items, onChange, base = 0 }) {
+    const upd = (id, p) => onChange(items.map((x) => (x.id === id ? { ...x, ...p } : x)));
+    const factorOf = (it) => (it.factor != null ? it.factor : base ? Math.round(((it.watt || 0) / base) * 100) / 100 : 0);
+    return (React.createElement("div", null,
+        items.map((it, i) => (React.createElement("div", { className: "matrow", key: it.id },
+            React.createElement("input", { className: "pname", value: it.name, placeholder: "Material, z. B. PLA", onChange: (e) => upd(it.id, { name: e.target.value }) }),
+            React.createElement(NumInput, { value: it.price, suffix: "\u20AC / kg", onChange: (v) => upd(it.id, { price: v }) }),
+            React.createElement(NumInput, { value: factorOf(it), suffix: `× Faktor = ${nf((base || 0) * factorOf(it), 0)} W`, onChange: (v) => upd(it.id, { factor: v }) }),
+            React.createElement(NumInput, { value: it.nozzle, suffix: "\u00B0C D\u00FCse", onChange: (v) => upd(it.id, { nozzle: v }) }),
+            React.createElement(NumInput, { value: it.bed, suffix: "\u00B0C Bett", onChange: (v) => upd(it.id, { bed: v }) }),
+            React.createElement("div", { className: "matctl" },
+                React.createElement("button", { className: "icon", "aria-label": "nach oben", disabled: i === 0, onClick: () => onChange(moveItem(items, i, -1)) },
+                    React.createElement(ChevronUp, { size: 18 })),
+                React.createElement("button", { className: "icon", "aria-label": "nach unten", disabled: i === items.length - 1, onClick: () => onChange(moveItem(items, i, 1)) },
+                    React.createElement(ChevronDown, { size: 18 })),
+                React.createElement("button", { className: "icon", "aria-label": "entfernen", onClick: () => onChange(items.filter((x) => x.id !== it.id)) },
+                    React.createElement(X, { size: 16 })))))),
+        React.createElement("button", { className: "btn small soft", onClick: () => onChange([...items, { id: uid(), name: "", price: 0, factor: 1, nozzle: 0, bed: 0 }]) },
+            React.createElement(Plus, { size: 16 }),
+            " Material hinzuf\u00FCgen")));
 }
 function ProductEditor({ items, onChange }) {
     const upd = (id, p) => onChange(items.map((x) => (x.id === id ? { ...x, ...p } : x)));
@@ -789,12 +1358,13 @@ const DEFAULT_NB = {
         entries: [],
     },
 };
-function LensPlan({ value = [], onChange, nb, onNb }) {
+function LensPlan({ value = [], onChange, nb, onNb, inspoNb }) {
     const [sheet, setSheet] = useState("");
     const sel = (id) => value.find((x) => x.id === id);
     const toggle = (id) => onChange(sel(id) ? value.filter((x) => x.id !== id) : [...value, { id, note: "" }]);
     const setNote = (id, note) => onChange(value.map((x) => (x.id === id ? { ...x, note } : x)));
     const sheetTab = nb.tabs.find((x) => x.id === sheet);
+    const linkedFor = inspoNb ? (tabId) => inspoNb.entries.filter((e) => e.lens === tabId).map((e) => ({ e, tabName: (inspoNb.tabs.find((x) => x.id === e.tab) || {}).name || "" })) : undefined;
     return (React.createElement("div", null,
         React.createElement("div", { className: "chips" }, nb.tabs.map((t) => React.createElement("button", { key: t.id, type: "button", className: "chip" + (sel(t.id) ? " on" : ""), onClick: () => toggle(t.id) }, t.name))),
         value.map((v) => {
@@ -819,14 +1389,254 @@ function LensPlan({ value = [], onChange, nb, onNb }) {
                     " Zur\u00FCck")),
             React.createElement("h1", { className: "title" }, sheetTab.name),
             React.createElement("p", { className: "muted lead" }, "Beispielbilder und Hinweise zu diesem Objektiv. Neue Eintr\u00E4ge mit Bildern legst du hier an."),
-            React.createElement(Notebook, { nb: nb, onChange: onNb, startTab: sheet, onlyTab: true, empty: "Noch keine Beispielbilder. Tippe auf \u201ENeuer Eintrag\u201C und f\u00FCge Fotos hinzu, die mit diesem Objektiv entstanden sind." })))));
+            React.createElement(Notebook, { nb: nb, onChange: onNb, startTab: sheet, onlyTab: true, linkedFor: linkedFor, empty: "Noch keine Beispielbilder. Tippe auf \u201ENeuer Eintrag\u201C und f\u00FCge Fotos hinzu, die mit diesem Objektiv entstanden sind." })))));
 }
-function EntryEditor({ init, tabs, isNew, onSave, onCancel, onDelete }) {
+/* ───────────── Anmeldung (lokal auf diesem Gerät) ───────────── */
+async function hashPin(pin, salt) {
+    try {
+        if (window.crypto && window.crypto.subtle) {
+            const enc = new TextEncoder();
+            const key = await window.crypto.subtle.importKey("raw", enc.encode(`${salt}:${pin}`), "PBKDF2", false, ["deriveBits"]);
+            const bits = await window.crypto.subtle.deriveBits({ name: "PBKDF2", salt: enc.encode(salt), iterations: 120000, hash: "SHA-256" }, key, 256);
+            return Array.from(new Uint8Array(bits)).map((b) => b.toString(16).padStart(2, "0")).join("");
+        }
+    }
+    catch (e) { /* Ersatzverfahren unten */ }
+    let h = 5381;
+    const str = `${salt}:${pin}`;
+    for (let i = 0; i < 4000; i++)
+        for (let j = 0; j < str.length; j++)
+            h = ((h << 5) + h + str.charCodeAt(j)) | 0;
+    return "f" + (h >>> 0).toString(16);
+}
+const newSalt = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+const validPin = (p) => /^\d{4,8}$/.test(p);
+function FiveConfirm({ onConfirm, label, steps = 5 }) {
+    const [n, setN] = useState(0);
+    useEffect(() => { if (n > 0) {
+        const t = setTimeout(() => setN(0), 8000);
+        return () => clearTimeout(t);
+    } return undefined; }, [n]);
+    return (React.createElement("div", { className: "five" },
+        React.createElement("button", { type: "button", className: "btn ghost danger" + (n > 0 ? " ask" : ""), onClick: () => { if (n + 1 >= steps) {
+                setN(0);
+                onConfirm();
+            }
+            else
+                setN(n + 1); } },
+            React.createElement(Trash2, { size: 16 }),
+            " ",
+            n === 0 ? label : `Bestätigung ${n} von ${steps}: noch ${steps - n}× tippen`),
+        React.createElement("div", { className: "fivedots", "aria-hidden": "true" }, Array.from({ length: steps }).map((_, i) => React.createElement("i", { key: i, className: i < n ? "on" : "" })))));
+}
+function SwitchRow({ label, sub, on, onChange }) {
+    return (React.createElement("button", { type: "button", className: "tog" + (on ? " on" : ""), onClick: () => onChange(!on), "aria-pressed": on },
+        React.createElement("span", { className: "tname" },
+            label,
+            sub && React.createElement("small", { className: "tsub" }, sub)),
+        React.createElement("span", { className: "switch" },
+            React.createElement("i", null))));
+}
+function AuthScreen({ auth, onRegister, onLogin, onSkip, onResetAll }) {
+    const [mode, setMode] = useState(auth ? "login" : "register");
+    const [pin, setPin] = useState("");
+    const [name, setName] = useState("");
+    const [p1, setP1] = useState("");
+    const [p2, setP2] = useState("");
+    const [err, setErr] = useState("");
+    const [fails, setFails] = useState(0);
+    const [wait, setWait] = useState(0);
+    const [busy, setBusy] = useState(false);
+    const [shake, setShake] = useState(false);
+    const [forgot, setForgot] = useState(false);
+    const len = (auth && auth.len) || 4;
+    useEffect(() => {
+        if (wait <= 0)
+            return undefined;
+        const t = setTimeout(() => setWait((w) => w - 1), 1000);
+        return () => clearTimeout(t);
+    }, [wait]);
+    const attempt = async (p) => {
+        setBusy(true);
+        const ok = await onLogin(p);
+        setBusy(false);
+        if (!ok) {
+            const f = fails + 1;
+            setFails(f);
+            setPin("");
+            setShake(true);
+            setTimeout(() => setShake(false), 400);
+            if (f % 5 === 0) {
+                setWait(30);
+                setErr("Zu viele Versuche. Bitte warte 30 Sekunden.");
+            }
+            else
+                setErr("Falsche PIN.");
+        }
+    };
+    const press = (d) => {
+        if (busy || wait > 0 || pin.length >= len)
+            return;
+        setErr("");
+        const np = pin + d;
+        setPin(np);
+        if (np.length === len)
+            attempt(np);
+    };
+    const back = () => setPin((p) => p.slice(0, -1));
+    useEffect(() => {
+        if (mode !== "login" || forgot)
+            return undefined;
+        const f = (e) => { if (/^\d$/.test(e.key))
+            press(e.key);
+        else if (e.key === "Backspace")
+            back(); };
+        window.addEventListener("keydown", f);
+        return () => window.removeEventListener("keydown", f);
+    });
+    const register = async () => {
+        if (!validPin(p1))
+            return setErr("Die PIN braucht 4 bis 8 Ziffern.");
+        if (p1 !== p2)
+            return setErr("Die beiden PINs sind verschieden.");
+        setBusy(true);
+        await onRegister(name.trim(), p1);
+        setBusy(false);
+    };
+    return (React.createElement("div", { className: "authwrap" },
+        React.createElement(Arches, { className: "auth-arch" }),
+        React.createElement("div", { className: "authcard" },
+            React.createElement(Sprig, { className: "auth-sprig" }),
+            React.createElement("h1", { className: "auth-title" }, "Foto-Manager"),
+            React.createElement("p", { className: "auth-sub" }, mode === "login" && auth ? `Willkommen zurück${auth.name ? ", " + auth.name : ""}` : "Lege dein Konto auf diesem Gerät an"),
+            React.createElement("div", { className: "seg two" },
+                React.createElement("button", { className: mode === "login" ? "on" : "", onClick: () => { setMode("login"); setErr(""); } }, "Login"),
+                React.createElement("button", { className: mode === "register" ? "on" : "", onClick: () => { setMode("register"); setErr(""); } }, "Registrieren")),
+            mode === "login" && !auth && (React.createElement("p", { className: "muted center" }, "Auf diesem Ger\u00E4t gibt es noch kein Konto. Wechsle zu \u201ERegistrieren\u201C.")),
+            mode === "login" && auth && !forgot && (React.createElement(React.Fragment, null,
+                React.createElement("div", { className: "pindots" + (shake ? " shake" : ""), "aria-label": `PIN, ${pin.length} von ${len} Ziffern` }, Array.from({ length: len }).map((_, i) => React.createElement("i", { key: i, className: i < pin.length ? "on" : "" }))),
+                React.createElement("p", { className: "autherr", role: "alert" }, wait > 0 ? `Gesperrt für ${wait} Sekunden` : err),
+                React.createElement("div", { className: "pad" },
+                    [1, 2, 3, 4, 5, 6, 7, 8, 9].map((d) => React.createElement("button", { key: d, type: "button", onClick: () => press(String(d)), disabled: wait > 0 }, d)),
+                    React.createElement("span", null),
+                    React.createElement("button", { type: "button", onClick: () => press("0"), disabled: wait > 0 }, "0"),
+                    React.createElement("button", { type: "button", "aria-label": "L\u00F6schen", onClick: back }, "\u232B")),
+                React.createElement("button", { type: "button", className: "link", onClick: () => setForgot(true) }, "PIN vergessen?"))),
+            mode === "login" && auth && forgot && (React.createElement("div", { className: "panel authforgot" },
+                React.createElement("strong", null, "PIN vergessen"),
+                React.createElement("p", { className: "muted" }, "Die PIN l\u00E4sst sich nicht wiederherstellen. Du kannst alle Daten auf diesem Ger\u00E4t l\u00F6schen und neu anfangen. Das geht nicht r\u00FCckg\u00E4ngig. Wenn du eine Sicherung gespeichert hast, kannst du sie danach wieder laden."),
+                React.createElement(FiveConfirm, { label: "Alle Daten l\u00F6schen und neu starten", onConfirm: onResetAll }),
+                React.createElement("button", { type: "button", className: "link", onClick: () => setForgot(false) }, "Zur\u00FCck zur Anmeldung"))),
+            mode === "register" && auth && auth.enabled && (React.createElement("div", { className: "panel authforgot" },
+                React.createElement("strong", null, "Es gibt schon ein Konto"),
+                React.createElement("p", { className: "muted" }, "Auf diesem Ger\u00E4t ist bereits ein Konto angelegt. Ein neues Konto beginnt mit leeren Daten. Daf\u00FCr werden alle bisherigen Daten gel\u00F6scht."),
+                React.createElement(FiveConfirm, { label: "Alle Daten l\u00F6schen und neu registrieren", onConfirm: onResetAll }))),
+            mode === "register" && !(auth && auth.enabled) && (React.createElement("div", { className: "authform" },
+                React.createElement(Field, { label: "Dein Name (optional)" },
+                    React.createElement("input", { value: name, autoComplete: "off", onChange: (e) => setName(e.target.value) })),
+                React.createElement(Field, { label: "PIN, 4 bis 8 Ziffern" },
+                    React.createElement("input", { type: "password", inputMode: "numeric", pattern: "[0-9]*", maxLength: 8, autoComplete: "new-password", value: p1, onChange: (e) => { setP1(e.target.value.replace(/\D/g, "")); setErr(""); } })),
+                React.createElement(Field, { label: "PIN wiederholen" },
+                    React.createElement("input", { type: "password", inputMode: "numeric", pattern: "[0-9]*", maxLength: 8, autoComplete: "new-password", value: p2, onChange: (e) => { setP2(e.target.value.replace(/\D/g, "")); setErr(""); } })),
+                React.createElement("p", { className: "autherr", role: "alert" }, err),
+                React.createElement("button", { type: "button", className: "btn save", disabled: busy, onClick: register }, "Registrieren"),
+                React.createElement("button", { type: "button", className: "link", onClick: onSkip }, "Ohne Anmeldung fortfahren"),
+                React.createElement("p", { className: "hint center" }, "Die PIN gilt nur auf diesem Ger\u00E4t und sperrt die App. Sie wird nicht an einen Server geschickt. Deine Daten liegen nur auf deinem Ger\u00E4t."))))));
+}
+function AuthSettings({ auth, onAuth, onLock }) {
+    const [cur, setCur] = useState("");
+    const [n1, setN1] = useState("");
+    const [n2, setN2] = useState("");
+    const [msg, setMsg] = useState("");
+    const enabled = !!(auth && auth.enabled);
+    const verify = async (p) => !!(auth && auth.hash) && (await hashPin(p, auth.salt)) === auth.hash;
+    const make = async (pin, base) => { const salt = newSalt(); return { ...base, salt, hash: await hashPin(pin, salt), len: pin.length, enabled: true }; };
+    const clear = () => { setCur(""); setN1(""); setN2(""); };
+    const digits = (set) => (e) => { set(e.target.value.replace(/\D/g, "")); setMsg(""); };
+    const pinInput = (v, set, label) => (React.createElement(Field, { label: label },
+        React.createElement("input", { type: "password", inputMode: "numeric", pattern: "[0-9]*", maxLength: 8, autoComplete: "off", value: v, onChange: digits(set) })));
+    const change = async () => {
+        if (!(await verify(cur)))
+            return setMsg("Die aktuelle PIN stimmt nicht.");
+        if (!validPin(n1))
+            return setMsg("Die neue PIN braucht 4 bis 8 Ziffern.");
+        if (n1 !== n2)
+            return setMsg("Die beiden neuen PINs sind verschieden.");
+        onAuth(await make(n1, auth));
+        clear();
+        setMsg("PIN geändert.");
+    };
+    const disable = async () => {
+        if (!(await verify(cur)))
+            return setMsg("Zum Ausschalten brauchst du die aktuelle PIN.");
+        onAuth({ name: auth.name, enabled: false });
+        clear();
+        setMsg("Anmeldung ausgeschaltet.");
+    };
+    const enable = async () => {
+        if (!validPin(n1))
+            return setMsg("Die PIN braucht 4 bis 8 Ziffern.");
+        if (n1 !== n2)
+            return setMsg("Die beiden PINs sind verschieden.");
+        onAuth(await make(n1, { name: (auth && auth.name) || "", lockAfter: 5 }));
+        clear();
+        setMsg("Anmeldung eingeschaltet.");
+    };
+    return (React.createElement("div", null,
+        enabled ? (React.createElement(React.Fragment, null,
+            React.createElement(Field, { label: "Name" },
+                React.createElement("input", { value: auth.name || "", onChange: (e) => onAuth({ ...auth, name: e.target.value }) })),
+            React.createElement("p", { className: "flabel" }, "PIN \u00E4ndern"),
+            pinInput(cur, setCur, "Aktuelle PIN"),
+            React.createElement("div", { className: "grid2" },
+                pinInput(n1, setN1, "Neue PIN"),
+                pinInput(n2, setN2, "Neue PIN wiederholen")),
+            React.createElement("div", { className: "eactions" },
+                React.createElement("button", { type: "button", className: "btn small", onClick: change }, "PIN \u00E4ndern"),
+                React.createElement("button", { type: "button", className: "btn small soft", onClick: disable }, "Anmeldung ausschalten")),
+            React.createElement("p", { className: "flabel", style: { marginTop: 16 } }, "Automatisch sperren nach"),
+            React.createElement("div", { className: "chips" }, [[1, "1 Min."], [5, "5 Min."], [15, "15 Min."], [0, "Nur beim Neustart"]].map(([m, l]) => {
+                var _a;
+                return (React.createElement("button", { key: m, type: "button", className: "chip" + (((_a = auth.lockAfter) !== null && _a !== void 0 ? _a : 5) === m ? " on" : ""), onClick: () => onAuth({ ...auth, lockAfter: m }) }, l));
+            })),
+            React.createElement("p", { className: "hint" }, "Gilt, wenn die App im Hintergrund war."),
+            React.createElement("button", { type: "button", className: "btn small soft", onClick: onLock }, "Jetzt sperren"))) : (React.createElement(React.Fragment, null,
+            React.createElement("p", { className: "muted" }, "Mit einer PIN sperrst du die App auf diesem Ger\u00E4t. Die PIN wird nicht an einen Server geschickt."),
+            React.createElement("div", { className: "grid2" },
+                pinInput(n1, setN1, "PIN, 4 bis 8 Ziffern"),
+                pinInput(n2, setN2, "PIN wiederholen")),
+            React.createElement("button", { type: "button", className: "btn small", onClick: enable }, "Anmeldung einschalten"))),
+        msg && React.createElement("p", { className: "note" }, msg)));
+}
+function ArchiveFolders({ value = [], onChange, inspo }) {
+    const [big, setBig] = useState("");
+    const sel = (id) => value.includes(id);
+    const imgsOf = (id) => inspo.entries.filter((e) => e.tab === id).flatMap((e) => e.images || []);
+    const shown = inspo.tabs.filter((t) => sel(t.id)).flatMap((t) => inspo.entries.filter((e) => e.tab === t.id).flatMap((e) => (e.images || []).map((src) => ({ src, title: e.title, tab: t.name }))));
+    return (React.createElement("div", { className: "folders" },
+        React.createElement("p", { className: "flabel" }, "Ordner aus der Inspiration"),
+        React.createElement("div", { className: "chips" }, inspo.tabs.map((t) => (React.createElement("button", { key: t.id, type: "button", className: "chip" + (sel(t.id) ? " on" : ""), onClick: () => onChange(sel(t.id) ? value.filter((x) => x !== t.id) : [...value, t.id]) },
+            t.name,
+            React.createElement("small", null, imgsOf(t.id).length))))),
+        shown.length > 0 && (React.createElement("div", { className: "egal" }, shown.map((x, i) => React.createElement("img", { key: i, src: x.src, alt: `${x.tab}: ${x.title || "Bild"}`, onClick: () => setBig(x.src) })))),
+        value.length > 0 && shown.length === 0 && React.createElement("p", { className: "hint" }, "In den gew\u00E4hlten Ordnern sind noch keine Bilder. Du legst sie bei den Anleitungen unter \u201EInspiration\u201C an."),
+        big && (React.createElement("div", { className: "lightbox", onClick: () => setBig("") },
+            React.createElement("img", { src: big, alt: "Vergr\u00F6\u00DFertes Bild" }),
+            React.createElement("button", { className: "gx big", "aria-label": "Schlie\u00DFen" },
+                React.createElement(X, { size: 20 }))))));
+}
+const archiveImages = (folders, inspo) => (folders || []).flatMap((id) => inspo.entries.filter((e) => e.tab === id).flatMap((e) => e.images || []));
+const folderNames = (folders, inspo) => (folders || []).map((id) => (inspo.tabs.find((t) => t.id === id) || {}).name).filter(Boolean).join(" · ");
+function EntryEditor({ init, tabs, isNew, onSave, onCancel, onDelete, lensTabs }) {
     const [d, setD] = useState(init);
     const set = (p) => setD((x) => ({ ...x, ...p }));
     return (React.createElement("div", { className: "entry editing" },
         React.createElement(Field, { label: "Reiter" },
             React.createElement("select", { value: d.tab, onChange: (e) => set({ tab: e.target.value }) }, tabs.map((t) => React.createElement("option", { key: t.id, value: t.id }, t.name)))),
+        lensTabs && (React.createElement(Field, { label: "Objektiv (optional)", hint: "Der Eintrag erscheint dann auch unter Anleitungen \u2192 Objektive beim gew\u00E4hlten Objektiv." },
+            React.createElement("select", { value: d.lens || "", onChange: (e) => set({ lens: e.target.value }) },
+                React.createElement("option", { value: "" }, "\u2013 keins \u2013"),
+                lensTabs.map((x) => React.createElement("option", { key: x.id, value: x.id }, x.name))))),
         React.createElement(Field, { label: "\u00DCberschrift" },
             React.createElement("input", { value: d.title, placeholder: "z. B. M4 Gewindeeinsatz", onChange: (e) => set({ title: e.target.value }) })),
         React.createElement(Field, { label: "Text" },
@@ -842,7 +1652,7 @@ function EntryEditor({ init, tabs, isNew, onSave, onCancel, onDelete }) {
             React.createElement("button", { className: "btn small soft", onClick: onCancel }, "Abbrechen"),
             !isNew && React.createElement(ConfirmButton, { onConfirm: () => onDelete(d.id), label: "L\u00F6schen", askLabel: "Wirklich l\u00F6schen?" }))));
 }
-function Notebook({ nb, onChange, empty, startTab, onlyTab }) {
+function Notebook({ nb, onChange, empty, startTab, onlyTab, lensTabs, linkedFor }) {
     const [tab, setTab] = useState(startTab || (nb.tabs[0] ? nb.tabs[0].id : ""));
     const [editing, setEditing] = useState(null);
     const [isNew, setIsNew] = useState(false);
@@ -888,19 +1698,32 @@ function Notebook({ nb, onChange, empty, startTab, onlyTab }) {
                 React.createElement("button", { className: "btn small", onClick: addTab },
                     React.createElement(Plus, { size: 16 }),
                     " Reiter")))),
-        editing && isNew && React.createElement(EntryEditor, { key: editing.id, init: editing, tabs: nb.tabs, isNew: true, onSave: save, onCancel: () => { setEditing(null); setIsNew(false); }, onDelete: del }),
+        editing && isNew && React.createElement(EntryEditor, { key: editing.id, init: editing, tabs: nb.tabs, lensTabs: lensTabs, isNew: true, onSave: save, onCancel: () => { setEditing(null); setIsNew(false); }, onDelete: del }),
         list.length === 0 && !editing && React.createElement("p", { className: "empty" }, empty || "In diesem Reiter ist noch nichts. Tippe auf „Neuer Eintrag“."),
-        list.map((e) => (editing && !isNew && editing.id === e.id ? (React.createElement(EntryEditor, { key: e.id, init: editing, tabs: nb.tabs, onSave: save, onCancel: () => setEditing(null), onDelete: del })) : (React.createElement("div", { className: "entry", key: e.id },
+        list.map((e) => (editing && !isNew && editing.id === e.id ? (React.createElement(EntryEditor, { key: e.id, init: editing, tabs: nb.tabs, lensTabs: lensTabs, onSave: save, onCancel: () => setEditing(null), onDelete: del })) : (React.createElement("div", { className: "entry", key: e.id },
             (e.images || []).length > 0 && (React.createElement("div", { className: "egal" }, e.images.map((src, i) => React.createElement("img", { key: i, src: src, alt: `Bild ${i + 1}`, onClick: () => setBig(src) })))),
             React.createElement("div", { className: "ehead" },
                 React.createElement("h3", null, e.title || "Ohne Überschrift"),
                 React.createElement("button", { className: "icon", "aria-label": "Bearbeiten", onClick: () => { setEditing({ ...e }); setIsNew(false); } },
                     React.createElement(Pencil, { size: 16 }))),
+            lensTabs && e.lens && React.createElement("span", { className: "catchip" }, (lensTabs.find((x) => x.id === e.lens) || {}).name),
             e.text && React.createElement("p", { className: "etext" }, e.text),
             e.link && React.createElement("a", { className: "btn small soft", href: linkHref(e.link), target: "_blank", rel: "noopener noreferrer" },
                 React.createElement(ExternalLink, { size: 16 }),
                 " ",
                 linkLabel(e.link)))))),
+        linkedFor && cur && (() => {
+            const L = linkedFor(cur);
+            return L.length > 0 ? (React.createElement("div", { className: "linked" },
+                React.createElement("h4", null, "Mit diesem Objektiv verkn\u00FCpft"),
+                React.createElement("p", { className: "hint" }, "Das sind Eintr\u00E4ge aus der Inspiration, bei denen du dieses Objektiv gew\u00E4hlt hast."),
+                L.map(({ e, tabName }) => (React.createElement("div", { className: "entry", key: e.id },
+                    (e.images || []).length > 0 && React.createElement("div", { className: "egal" }, e.images.map((src, n) => React.createElement("img", { key: n, src: src, alt: `Bild ${n + 1}`, onClick: () => setBig(src) }))),
+                    React.createElement("div", { className: "ehead" },
+                        React.createElement("h3", null, e.title || "Ohne Überschrift"),
+                        React.createElement("span", { className: "catchip" }, tabName)),
+                    e.text && React.createElement("p", { className: "etext" }, e.text)))))) : null;
+        })(),
         big && (React.createElement("div", { className: "lightbox", onClick: () => setBig("") },
             React.createElement("img", { src: big, alt: "Vergr\u00F6\u00DFertes Bild" }),
             React.createElement("button", { className: "gx big", "aria-label": "Schlie\u00DFen" },
@@ -970,7 +1793,7 @@ function KCard({ kind, title, status, rows, chips, lines: priceLines, total, not
             React.createElement("p", { className: "hint" }, "F\u00FCr einen Screenshot auf dem iPhone Seitentaste und Lauter-Taste gleichzeitig dr\u00FCcken."))));
 }
 const lensText = (list, lens) => (list || []).map((v) => { const t = lens && lens.tabs.find((x) => x.id === v.id); return t ? t.name + (v.note ? ` (${v.note})` : "") : ""; }).filter(Boolean).join(" · ");
-function WeddingCardView({ w, s, lens }) {
+function WeddingCardView({ w, s, lens, inspo }) {
     const c = calcWedding(w, s);
     const P = w.prices || s;
     const chosen = [
@@ -986,10 +1809,11 @@ function WeddingCardView({ w, s, lens }) {
             ["Gäste", w.guests > 0 ? String(w.guests) : ""],
             ["Anfahrt", w.km > 0 ? `${w.km} km` : ""],
             ["Objektive", lensText(w.lenses, lens)],
+            ["Bilder-Ordner", inspo ? folderNames(w.folders, inspo) : ""],
             ["Checkliste", w.checklist.length ? `${done} von ${w.checklist.length} erledigt` : ""],
-        ], chips: chosen, lines: c.lines, total: c.total, notes: [w.notes, w.inspoText].filter(Boolean).join("\n\n"), images: w.inspo || [], foot: [w.pricesFrom && `Preise festgehalten am ${new Date(w.pricesFrom).toLocaleDateString("de-DE")}`, w.updatedAt && `Letzte Änderung: ${fmtStamp(w.updatedAt)}`] }));
+        ], chips: chosen, lines: c.lines, total: c.total, notes: [w.notes, w.inspoText].filter(Boolean).join("\n\n"), images: [...(w.inspo || []), ...archiveImages(w.folders, inspo || { entries: [] })], foot: [w.pricesFrom && `Preise festgehalten am ${new Date(w.pricesFrom).toLocaleDateString("de-DE")}`, w.updatedAt && `Letzte Änderung: ${fmtStamp(w.updatedAt)}`] }));
 }
-function JobCardView({ j, s, lens }) {
+function JobCardView({ j, s, lens, inspo }) {
     const t = s.jobTypes.find((x) => x.id === j.type);
     return (React.createElement(KCard, { kind: "j", status: j.status, title: j.name || "Ohne Namen", rows: [
             ["Art", t ? t.name : ""],
@@ -998,16 +1822,14 @@ function JobCardView({ j, s, lens }) {
             ["Location", j.place],
             ["Kontakt", j.contact],
             ["Objektive", lensText(j.lenses, lens)],
-        ], chips: [], lines: [], total: j.price || 0, notes: [j.notes, j.inspoText].filter(Boolean).join("\n\n"), images: j.inspo || [], foot: [j.updatedAt && `Letzte Änderung: ${fmtStamp(j.updatedAt)}`] }));
+            ["Bilder-Ordner", inspo ? folderNames(j.folders, inspo) : ""],
+        ], chips: [], lines: [], total: j.price || 0, notes: [j.notes, j.inspoText].filter(Boolean).join("\n\n"), images: [...(j.inspo || []), ...archiveImages(j.folders, inspo || { entries: [] })], foot: [j.updatedAt && `Letzte Änderung: ${fmtStamp(j.updatedAt)}`] }));
 }
-function WorkCardView({ w, s }) {
+function WorkCardView({ w, s, allWork = [] }) {
     const { sx, vals, ready, res } = workResult(s, w);
     const prod = vals.prod ? (s.products || []).find((p) => p.id === vals.prod) || (sx.products || []).find((p) => p.id === vals.prod) : null;
-    const rows = [["Kunde", w.customer], ["Art", KIND_NAME[w.kind]], [w.kind === "neu" ? "Geplant für" : "Fällig bis", fmtDateLong(w.date)]];
-    if (w.kind === "druck") {
-        const m = sx.machines.druck.materials.find((x) => x.id === vals.mat);
-        rows.push(["Material", m ? m.name : ""], ["Verbrauch", vals.grams > 0 ? `${nf(vals.grams, 0)} g` : ""], ["Druckdauer", vals.hours > 0 ? `${nf(vals.hours, 1)} Std.` : ""]);
-    }
+    const rows = [["Kunde", w.customer], ["Art", KIND_NAME[w.kind]], [isCalcOnly(w.kind) ? "Geplant für" : "Fällig bis", fmtDateLong(w.date)]];
+    const parts = w.kind === "druck" ? partsOf(vals).filter((p) => p.mat || p.label) : [];
     if (w.kind === "stick") {
         rows.push(["Produkt", prod ? prod.name : ""], ["Stückzahl", vals.qty > 1 ? String(vals.qty) : ""], ["Stiche", vals.stitchesK > 0 ? `${nf(vals.stitchesK, 1)} Tsd.` : ""], ["Farbwechsel", vals.colors > 0 ? String(vals.colors) : ""]);
     }
@@ -1016,9 +1838,43 @@ function WorkCardView({ w, s }) {
         rows.push(["Folie", f ? f.name : ""], ["Fläche", areaOf(vals) > 0 ? `${nf(areaOf(vals) * 10000, 0)} cm²` : ""], ["Stückzahl", vals.qty > 1 ? String(vals.qty) : ""], ["Worauf", prod ? prod.name : ""]);
     }
     const imgs = [...(w.images || []), ...(prod && prod.image ? [prod.image] : [])];
-    const priced = ready && w.kind !== "neu";
+    const priced = ready && !isCalcOnly(w.kind);
     const q = Math.max(vals.qty || 1, 1);
-    return (React.createElement(KCard, { kind: "k", status: w.status, title: w.title || KIND_NAME[w.kind], rows: rows, chips: ready && w.kind === "neu" ? [`${res.head.label}: ${res.head.value}`] : [], lines: priced && res.stats ? [["Selbstkosten", res.cost], ...res.stats.map(([l, v]) => [l, v])] : [], total: priced ? res.price * q : 0, noTotal: !priced, notes: w.notes, images: imgs, foot: [w.snapFrom && w.kind !== "neu" && `Maschinen- und Materialwerte festgehalten am ${new Date(w.snapFrom).toLocaleDateString("de-DE")}`, w.updatedAt && `Letzte Änderung: ${fmtStamp(w.updatedAt)}`] }));
+    const members = isCalcOnly(w.kind) ? [] : workGroup(allWork, w);
+    const verbund = members.length
+        ? [["Verknüpfte Projekte", ""], ...members.map((m) => [`${m.title || KIND_NAME[m.kind]} (${KIND_NAME[m.kind]})${noteFor(allWork, w, m) ? ": " + noteFor(allWork, w, m) : ""}`, workPrice(s, m)]), ["Gesamtpreis des Verbunds", workPrice(s, w) + members.reduce((a, m) => a + workPrice(s, m), 0)]]
+        : [];
+    const priceLines = [...(priced && res.stats ? [["Selbstkosten", res.cost], ...res.stats.map(([l, v]) => [l, v])] : [])];
+    return (React.createElement("div", null,
+        React.createElement(KCard, { kind: "k", status: w.status, title: w.title || KIND_NAME[w.kind], rows: rows, chips: ready && isCalcOnly(w.kind) ? [`${res.head.label}: ${res.head.value}`] : [], lines: [...priceLines, ...verbund], total: priced ? res.price * q : 0, noTotal: !priced, notes: w.notes, images: imgs, foot: [w.snapFrom && !isCalcOnly(w.kind) && `Maschinen- und Materialwerte festgehalten am ${new Date(w.snapFrom).toLocaleDateString("de-DE")}`, w.updatedAt && `Letzte Änderung: ${fmtStamp(w.updatedAt)}`] }),
+        parts.length > 0 && (React.createElement("div", { className: "kparts" },
+            React.createElement("p", { className: "kparts-h" }, "Teile"),
+            parts.map((p, i) => {
+                const mt = sx.machines.druck.materials.find((x) => x.id === p.mat);
+                return (React.createElement("div", { className: "kpart", key: p.id || i },
+                    React.createElement("div", { className: "kpart-h" },
+                        React.createElement("span", { className: "kpart-n" }, i + 1),
+                        React.createElement("strong", null, p.label || `Teil ${i + 1}`)),
+                    React.createElement("div", { className: "krows" },
+                        React.createElement("div", { className: "irow" },
+                            React.createElement("span", null, "Material"),
+                            React.createElement("b", null, mt ? mt.name : "–")),
+                        React.createElement("div", { className: "irow" },
+                            React.createElement("span", null, "Menge"),
+                            React.createElement("b", null,
+                                nf((p.grams || 0) / 1000, 2),
+                                " kg \u00B7 ",
+                                nf(p.grams || 0, 0),
+                                " g")),
+                        React.createElement("div", { className: "irow" },
+                            React.createElement("span", null, "Druckdauer"),
+                            React.createElement("b", null, p.hours > 0 ? `${nf(p.hours, 1)} Std.` : "–")),
+                        mt && p.grams > 0 && React.createElement("div", { className: "irow" },
+                            React.createElement("span", null, "Kosten Material"),
+                            React.createElement("b", null, eur((p.grams / 1000) * mt.price)))),
+                    p.notes && React.createElement("p", { className: "knotes" }, p.notes),
+                    (p.images || []).length > 0 && React.createElement("div", { className: "kimgs" }, p.images.map((src, n) => React.createElement("img", { key: n, src: src, alt: `Teil ${i + 1}, Bild ${n + 1}` })))));
+            })))));
 }
 function GuideCardView({ g, s }) {
     const d = difficulty(g.diff, s);
@@ -1027,6 +1883,31 @@ function GuideCardView({ g, s }) {
     const sets = [["kameramodus", "Modus"], ["blende", "Blende"], ["verschluss", "Zeit"], ["iso", "ISO"], ["blitz", "Blitz"], ["messmodus", "Messung"], ["fokus", "Fokus"], ["weissabgleich", "WB"], ["format", "Format"]]
         .filter(([k]) => v[k]).map(([k, l]) => `${l} ${v[k]}`).join(" · ");
     return (React.createElement(KCard, { kind: "g", status: `Stufe ${d.grade}`, title: g.title || "Ohne Titel", rows: [["Ort", g.location], ["Datum", fmtDateLong(g.date)], ["Ausrüstung", gear], ["Einstellungen", sets], ["Schwierigkeit", `${GRADE_WORDS[d.grade]} · ${d.pts} Punkte`]], chips: [...(g.ext || []), ...(g.acc || [])].filter(Boolean), lines: [], total: 0, noTotal: true, notes: [g.text, g.other].filter(Boolean).join("\n\n"), images: getImages(g), foot: [g.updatedAt && `Letzte Änderung: ${fmtStamp(g.updatedAt)}`] }));
+}
+function PostSteps({ item, steps, update, label }) {
+    if (!steps || steps.length === 0)
+        return React.createElement("p", { className: "hint" }, "Keine Fristen eingerichtet. Du legst sie unter Einstellungen an.");
+    if (!item.date)
+        return React.createElement("p", { className: "hint" }, "Trage oben ein Datum ein, dann rechnet die App die Fristen nach dem Shooting aus.");
+    const done = item.postDone || {};
+    const rows = steps.map((st) => ({ st, due: addDays(item.date, st.days), ok: !!done[st.id] }));
+    const status = (r) => {
+        if (r.ok)
+            return "erledigt";
+        const d = daysUntil(r.due);
+        if (d < 0)
+            return `überfällig seit ${-d} ${-d === 1 ? "Tag" : "Tagen"}`;
+        return d === 0 ? "heute fällig" : `in ${d} ${d === 1 ? "Tag" : "Tagen"}`;
+    };
+    return (React.createElement("div", null, rows.map((r) => (React.createElement("div", { key: r.st.id, className: "ck" + (r.ok ? " done" : "") + (!r.ok && daysUntil(r.due) < 0 ? " late" : "") },
+        React.createElement("button", { type: "button", className: "cbox", "aria-label": r.ok ? "wieder öffnen" : "als erledigt markieren", onClick: () => update({ postDone: { ...done, [r.st.id]: !r.ok } }) }, r.ok && React.createElement(Check, { size: 15, strokeWidth: 3 })),
+        React.createElement("span", { className: "ctext" },
+            r.st.name,
+            React.createElement("small", { className: "due" },
+                "bis ",
+                new Date(r.due + "T00:00:00").toLocaleDateString("de-DE"),
+                " \u00B7 ",
+                status(r))))))));
 }
 function GearEditor({ items, onChange }) {
     const upd = (id, p) => onChange(items.map((x) => (x.id === id ? { ...x, ...p } : x)));
@@ -1093,7 +1974,7 @@ function Editor({ initial, isNew, titleOf, body, summary, card, onSave, onCancel
                 " Speichern"))));
 }
 /* ───────────── Hochzeit ───────────── */
-function WeddingBody({ w, s, update, lensNb, onLensNb }) {
+function WeddingBody({ w, s, update, lensNb, onLensNb, inspoNb }) {
     const c = calcWedding(w, s);
     const P = w.prices || s;
     const setIn = (g, id, v) => update({ [g]: { ...(w[g] || {}), [id]: v } });
@@ -1151,19 +2032,23 @@ function WeddingBody({ w, s, update, lensNb, onLensNb }) {
         React.createElement(Section, { title: "Zusatzdienstleistungen" }, groupBlock("services", P.services || [])),
         React.createElement(Section, { title: "Extras" }, groupBlock("extras", P.extras || [])),
         React.createElement(Section, { title: "Auslieferung" }, groupBlock("delivery", P.delivery || [])),
+        React.createElement(Section, { title: "Nachbearbeitung", aside: "Fristen nach dem Shooting" },
+            React.createElement(PostSteps, { item: w, steps: s.postSteps, update: update, label: [w.bride, w.groom].filter(Boolean).join(" & ") || "Hochzeit" })),
         React.createElement(Section, { title: "Checkliste", aside: `${w.checklist.filter((i) => i.done).length} von ${w.checklist.length} erledigt` },
             React.createElement(Checklist, { items: w.checklist, onChange: (v) => update({ checklist: v }) })),
         lensNb && (React.createElement(Section, { title: "Objektive", aside: "Welches Objektiv f\u00FCr welche Shots" },
-            React.createElement(LensPlan, { value: w.lenses || [], onChange: (v) => update({ lenses: v }), nb: lensNb, onNb: onLensNb }))),
+            React.createElement(LensPlan, { value: w.lenses || [], onChange: (v) => update({ lenses: v }), nb: lensNb, onNb: onLensNb, inspoNb: inspoNb }))),
         React.createElement(Section, { title: "Beispielbilder", aside: "Inspiration f\u00FCr dieses Shooting" },
+            React.createElement("p", { className: "flabel" }, "Eigene Bilder (Kundenwunsch)"),
             React.createElement(GalleryField, { images: w.inspo || [], onChange: (v) => update({ inspo: v }), max: 8, sketch: true }),
+            inspoNb && React.createElement(ArchiveFolders, { value: w.folders || [], onChange: (v) => update({ folders: v }), inspo: inspoNb }),
             React.createElement(Field, { label: "Was soll auf die Bilder?" },
                 React.createElement("textarea", { rows: 3, value: w.inspoText || "", onChange: (e) => update({ inspoText: e.target.value }), placeholder: "z. B. solche Gruppenfotos vor dem Gutshaus \u2026" }))),
         React.createElement(Section, { title: "Notizen" },
             React.createElement("textarea", { rows: 4, value: w.notes, onChange: (e) => update({ notes: e.target.value }), placeholder: "W\u00FCnsche, Ablauf, Ansprechpartner \u2026" }))));
 }
 /* ───────────── Aufträge ───────────── */
-function JobBody({ j, s, update, addType, lensNb, onLensNb }) {
+function JobBody({ j, s, update, addType, lensNb, onLensNb, inspoNb }) {
     const [adding, setAdding] = useState(false);
     const [nName, setNName] = useState("");
     const [nPrice, setNPrice] = useState(0);
@@ -1236,12 +2121,16 @@ function JobBody({ j, s, update, addType, lensNb, onLensNb }) {
                         React.createElement("b", null, eur(r.profit))),
                     React.createElement("button", { className: "btn small soft", onClick: () => update({ price: r.rec }) }, "Empfohlenen Preis eintragen"))));
         })(),
+        React.createElement(Section, { title: "Nachbearbeitung", aside: "Fristen nach dem Shooting" },
+            React.createElement(PostSteps, { item: j, steps: s.postSteps, update: update, label: j.name || "Auftrag" })),
         React.createElement(Section, { title: "Checkliste" },
             React.createElement(Checklist, { items: j.checklist, onChange: (v) => update({ checklist: v }) })),
         lensNb && (React.createElement(Section, { title: "Objektive", aside: "Welches Objektiv f\u00FCr welche Shots" },
-            React.createElement(LensPlan, { value: j.lenses || [], onChange: (v) => update({ lenses: v }), nb: lensNb, onNb: onLensNb }))),
+            React.createElement(LensPlan, { value: j.lenses || [], onChange: (v) => update({ lenses: v }), nb: lensNb, onNb: onLensNb, inspoNb: inspoNb }))),
         React.createElement(Section, { title: "Beispielbilder", aside: "Inspiration f\u00FCr dieses Shooting" },
+            React.createElement("p", { className: "flabel" }, "Eigene Bilder (Kundenwunsch)"),
             React.createElement(GalleryField, { images: j.inspo || [], onChange: (v) => update({ inspo: v }), max: 8, sketch: true }),
+            inspoNb && React.createElement(ArchiveFolders, { value: j.folders || [], onChange: (v) => update({ folders: v }), inspo: inspoNb }),
             React.createElement(Field, { label: "Was soll auf die Bilder?" },
                 React.createElement("textarea", { rows: 3, value: j.inspoText || "", onChange: (e) => update({ inspoText: e.target.value }), placeholder: "z. B. solche Gruppenfotos vor dem Gutshaus \u2026" }))),
         React.createElement(Section, { title: "Notizen" },
@@ -1327,14 +2216,20 @@ function GuideBody({ g, s, update }) {
                 React.createElement(X, { size: 20 }))))));
 }
 /* ───────────── Einstellungen ───────────── */
-function SettingsView({ s, setS, onReset, onExport, onImport, onApplyBox, hasDemo, onLoadDemo, onRemoveDemo, dark, initialSub = "w", openMachine = "" }) {
-    const [sub, setSub] = useState(initialSub);
+function SettingsView({ s, setS, onReset, onExport, onImport, onApplyBox, hasDemo, onLoadDemo, onRemoveDemo, dark, auth, onAuth, onLock, onResetAll, initialSub = "w", openMachine = "" }) {
+    const [subRaw, setSub] = useState(initialSub);
+    const hid = s.hide || {};
     const set = (patch) => setS({ ...s, ...patch });
     const setDiff = (qk, fn) => set({ diff: s.diff.map((q) => (q.k === qk ? { ...q, o: fn(q.o) } : q)) });
     const setLimit = (i, v) => set({ gradeLimits: s.gradeLimits.map((x, n) => (n === i ? v : x)) });
     const setTheme = (p) => set({ theme: { ...s.theme, ...p } });
-    const subs = [["w", "Hochzeiten", "weddings"], ["j", "Aufträge", "jobs"], ["g", "Anleitungen", "guides"], ["m", "Maschinen", "work"], ["e", "Ausrüstung", "home"], ["d", "Design & Daten", "home"]];
+    const subsAll = [["w", "Hochzeiten", "weddings"], ["j", "Aufträge", "jobs"], ["g", "Anleitungen", "guides"], ["m", "Maschinen", "work"], ["e", "Ausrüstung", "home"], ["d", "Design & Daten", "home"]];
+    const subs = subsAll.filter(([k]) => !({ w: hid.hochzeiten, j: hid.auftraege, g: hid.anleitungen, m: hid.werkstatt || (hid.druck && hid.stick && hid.plot && hid.neu) })[k]);
+    const sub = subs.some((x) => x[0] === subRaw) ? subRaw : subs[0][0];
     const r = machineRate(s);
+    const postAcc = (React.createElement(Accordion, { title: "Fristen nach dem Shooting", sub: (s.postSteps || []).map((x) => `${x.name} ${x.days} T.`).join(" · ") || "Keine Fristen" },
+        React.createElement("p", { className: "muted" }, "Ab dem Datum des Shootings rechnet die App diese Fristen aus. Sie erscheinen bei Hochzeiten und Auftr\u00E4gen und auf der Startseite."),
+        React.createElement(PriceListEditor, { noun: "Frist", suffix: "Tage", valueKey: "days", items: s.postSteps || [], onChange: (v) => set({ postSteps: v }) })));
     const setM = (id, patch) => set({ machines: { ...s.machines, [id]: { ...s.machines[id], ...patch } } });
     const mf = (id, k, label, suffix, hint) => (React.createElement(Field, { key: k, label: label, hint: hint },
         React.createElement(NumInput, { value: s.machines[id][k], suffix: suffix, onChange: (x) => setM(id, { [k]: x }) })));
@@ -1343,7 +2238,7 @@ function SettingsView({ s, setS, onReset, onExport, onImport, onApplyBox, hasDem
         mf(id, "years", "Nutzungsdauer", "Jahre", "Daraus ergibt sich die Abschreibung"),
         mf(id, "hrsYear", "Betriebsstunden pro Jahr", "Std."),
         mf(id, "maint", "Wartung und Verschleiß", "% / Jahr", "Anteil vom Kaufpreis pro Jahr"),
-        mf(id, "watt", "Stromverbrauch im Betrieb", "Watt")));
+        mf(id, "watt", id === "druck" ? "Normalbetrieb beim Drucken (Faktor 1)" : "Stromverbrauch im Betrieb", "Watt", id === "druck" ? "Durchschnitt mit PLA. Die anderen Materialien rechnen mit ihrem Faktor." : undefined)));
     const accKey = subs.find((x) => x[0] === sub)[2];
     return (React.createElement("div", { style: themeVars(s.theme, accKey, dark), className: "settings" },
         React.createElement("h1", { className: "title" }, "Einstellungen"),
@@ -1373,12 +2268,14 @@ function SettingsView({ s, setS, onReset, onExport, onImport, onApplyBox, hasDem
                 React.createElement(PriceListEditor, { noun: "Extra", items: s.extras, onChange: (v) => set({ extras: v }) })),
             React.createElement(Accordion, { title: "Auslieferung", sub: `${s.delivery.length} Optionen` },
                 React.createElement(PriceListEditor, { noun: "Option", items: s.delivery, onChange: (v) => set({ delivery: v }) })),
+            postAcc,
             React.createElement(Accordion, { title: "Standard-Checkliste", sub: `${lines(s.checklistText).length} Punkte für neue Hochzeiten` },
                 React.createElement("textarea", { rows: 8, value: s.checklistText, onChange: (e) => set({ checklistText: e.target.value }) }),
                 React.createElement("p", { className: "hint" }, "Ein Punkt pro Zeile. Gilt nur f\u00FCr neue Hochzeiten.")))),
         sub === "j" && (React.createElement("div", null,
             React.createElement(Accordion, { defaultOpen: true, title: "Shooting-Arten", sub: `${s.jobTypes.length} Arten mit Standardpreis` },
-                React.createElement(PriceListEditor, { noun: "Art", items: s.jobTypes, onChange: (v) => set({ jobTypes: v }) })))),
+                React.createElement(PriceListEditor, { noun: "Art", items: s.jobTypes, onChange: (v) => set({ jobTypes: v }) })),
+            postAcc)),
         sub === "g" && (React.createElement("div", null,
             React.createElement(Accordion, { defaultOpen: true, title: "Schwierigkeitsstufen", sub: `A bis ${s.gradeLimits[0]} Punkte, F ab ${s.gradeLimits[4] + 1}` },
                 React.createElement("p", { className: "muted" }, "Die Punkte aller gew\u00E4hlten Antworten werden addiert. Bis zu diesem Wert gilt die jeweilige Stufe."),
@@ -1411,15 +2308,28 @@ function SettingsView({ s, setS, onReset, onExport, onImport, onApplyBox, hasDem
                         React.createElement(NumInput, { value: s.shop.gain, suffix: "%", onChange: (x) => set({ shop: { ...s.shop, gain: x } }) })),
                     React.createElement(Field, { label: "Dein Stundenlohn", hint: "Derselbe Wert wie unter Ausr\u00FCstung" },
                         React.createElement(NumInput, { value: s.wage, suffix: "\u20AC / Std.", onChange: (x) => set({ wage: x }) })))),
-            React.createElement(Accordion, { defaultOpen: openMachine === "products", title: "Produkte und Rohlinge", sub: `${s.products.length} Produkte für Stickerei und Plotter` },
+            !(hid.stick && hid.plot) && (React.createElement(Accordion, { defaultOpen: openMachine === "products", title: "Produkte und Rohlinge", sub: `${s.products.length} Produkte für Stickerei und Plotter` },
                 React.createElement("p", { className: "muted" }, "Zum Beispiel T-Shirt, Hoodie oder Handtuch. Der Preis ist dein Einkaufspreis pro St\u00FCck."),
-                React.createElement(ProductEditor, { items: s.products, onChange: (v) => set({ products: v }) })),
-            React.createElement(Accordion, { defaultOpen: openMachine === "druck", title: "3D-Drucker", sub: `${eur(rate(s.machines.druck))} pro Stunde · ${s.machines.druck.materials.length} Materialien` },
+                React.createElement(ProductEditor, { items: s.products, onChange: (v) => set({ products: v }) }))),
+            React.createElement(Accordion, { title: "Standard-To-dos f\u00FCr Projekte", sub: `${lines(s.workChecklistText || "").length} Punkte für neue Werkstatt-Projekte` },
+                React.createElement("textarea", { rows: 6, value: s.workChecklistText || "", onChange: (e) => set({ workChecklistText: e.target.value }) }),
+                React.createElement("p", { className: "hint" }, "Ein Punkt pro Zeile. Gilt f\u00FCr neue Werkstatt-Projekte.")),
+            !hid.druck && (React.createElement(Accordion, { defaultOpen: openMachine === "druck", title: "3D-Drucker", sub: `${eur(rate(s.machines.druck))} pro Stunde · ${s.machines.druck.materials.length} Materialien` },
                 basics("druck"),
                 React.createElement("div", { className: "grid2" }, mf("druck", "failPct", "Zuschlag für Fehldrucke", "%")),
-                React.createElement("p", { className: "flabel" }, "Materialien, Preis pro kg"),
-                React.createElement(PriceListEditor, { noun: "Material", suffix: "\u20AC / kg", items: s.machines.druck.materials, onChange: (v) => setM("druck", { materials: v }) })),
-            React.createElement(Accordion, { defaultOpen: openMachine === "stick", title: "Stickmaschine", sub: `${eur(rate(s.machines.stick))} pro Stunde` },
+                React.createElement("p", { className: "flabel" }, "Strom: Formel"),
+                React.createElement("p", { className: "hint" }, "Watt beim Drucken = Normalbetrieb \u00D7 Faktor des Materials. Dazu kommt das Aufheizen (H\u00F6chstleistung \u00D7 Aufheizzeit, einmal pro Filament-Teil) und der Standby."),
+                React.createElement("div", { className: "grid2" },
+                    mf("druck", "peakW", "Höchstleistung beim Aufheizen", "Watt", "Zum Beispiel 900 Watt"),
+                    mf("druck", "heatMin", "Aufheizzeit pro Teil", "Min."),
+                    mf("druck", "standbyW", "Verbrauch im Standby", "Watt", "Drucker an, aber er druckt nicht"),
+                    mf("druck", "onHours", "Stunden pro Jahr eingeschaltet", "Std.", "Leer lassen: nur beim Drucken")),
+                React.createElement("button", { type: "button", className: "btn small soft", onClick: () => setM("druck", { onHours: 8760 }) }, "L\u00E4uft die ganze Zeit (8.760 Std.)"),
+                React.createElement("p", { className: "hint" }, "Mit Dauerbetrieb rechnet die App den Standby-Strom auf jede Druckstunde um."),
+                React.createElement("p", { className: "flabel", style: { marginTop: 16 } }, "Materialien"),
+                React.createElement("p", { className: "hint" }, "Preis pro kg, Faktor und Temperaturen. PLA ist Faktor 1. Ein h\u00F6herer Faktor bedeutet mehr Strom, weil D\u00FCse und Bett hei\u00DFer sind. Am genauesten findest du den Faktor mit einem Strommessger\u00E4t an der Steckdose heraus."),
+                React.createElement(MaterialEditor, { items: s.machines.druck.materials, base: s.machines.druck.watt, onChange: (v) => setM("druck", { materials: v }) }))),
+            !hid.stick && (React.createElement(Accordion, { defaultOpen: openMachine === "stick", title: "Stickmaschine", sub: `${eur(rate(s.machines.stick))} pro Stunde` },
                 basics("stick"),
                 React.createElement("div", { className: "grid2" },
                     mf("stick", "spm", "Stickgeschwindigkeit", "Stiche / Min."),
@@ -1440,8 +2350,8 @@ function SettingsView({ s, setS, onReset, onExport, onImport, onApplyBox, hasDem
                     React.createElement(Field, { label: "Unterfaden: Preis pro Spule" },
                         React.createElement(NumInput, { value: s.machines.stick.bobSpool.price, suffix: "\u20AC", onChange: (x) => setM("stick", { bobSpool: { ...s.machines.stick.bobSpool, price: x } }) })),
                     React.createElement(Field, { label: "Unterfaden: Meter pro Spule" },
-                        React.createElement(NumInput, { value: s.machines.stick.bobSpool.len, suffix: "m", onChange: (x) => setM("stick", { bobSpool: { ...s.machines.stick.bobSpool, len: x } }) })))),
-            React.createElement(Accordion, { defaultOpen: openMachine === "plot", title: "Plotter", sub: `${eur(rate(s.machines.plot))} pro Stunde · ${s.machines.plot.foils.length} Folien` },
+                        React.createElement(NumInput, { value: s.machines.stick.bobSpool.len, suffix: "m", onChange: (x) => setM("stick", { bobSpool: { ...s.machines.stick.bobSpool, len: x } }) }))))),
+            !hid.plot && (React.createElement(Accordion, { defaultOpen: openMachine === "plot", title: "Plotter", sub: `${eur(rate(s.machines.plot))} pro Stunde · ${s.machines.plot.foils.length} Folien` },
                 basics("plot"),
                 React.createElement("div", { className: "grid2" },
                     mf("plot", "wear", "Messer-Verschleiß pro Stück", "€"),
@@ -1472,7 +2382,7 @@ function SettingsView({ s, setS, onReset, onExport, onImport, onApplyBox, hasDem
                     React.createElement(Field, { label: "L\u00E4nge" },
                         React.createElement(NumInput, { value: s.machines.plot.transfer.len, suffix: "m", onChange: (x) => setM("plot", { transfer: { ...s.machines.plot.transfer, len: x } }) })),
                     React.createElement(Field, { label: "Breite" },
-                        React.createElement(NumInput, { value: s.machines.plot.transfer.width, suffix: "cm", onChange: (x) => setM("plot", { transfer: { ...s.machines.plot.transfer, width: x } }) })))),
+                        React.createElement(NumInput, { value: s.machines.plot.transfer.width, suffix: "cm", onChange: (x) => setM("plot", { transfer: { ...s.machines.plot.transfer, width: x } }) }))))),
             React.createElement(Accordion, { defaultOpen: openMachine === "box", title: "Fotobox", sub: `${eur(boxCalc(s.machines.box, s, { prints: s.machines.box.prints, km: s.machines.box.km, workH: s.machines.box.workH, price: s.machines.box.price }).cost)} Selbstkosten pro Buchung` },
                 React.createElement("p", { className: "flabel" }, "Anschaffung"),
                 React.createElement("div", { className: "grid2" },
@@ -1558,6 +2468,14 @@ function SettingsView({ s, setS, onReset, onExport, onImport, onApplyBox, hasDem
                 React.createElement("p", { className: "muted" }, "Stundensatz = Maschinenstundensatz + Wunschlohn \u00D7 (1 + Nacharbeit je Einsatzstunde)."),
                 React.createElement("p", { className: "muted" }, "Das ist eine vereinfachte Orientierung. F\u00FCr Steuer und Buchhaltung bitte mit deiner Steuerberatung abstimmen.")))),
         sub === "d" && (React.createElement("div", null,
+            React.createElement(Accordion, { title: "Anmeldung", sub: auth && auth.enabled ? `Angemeldet${auth.name ? " als " + auth.name : ""} · PIN-Schutz an` : "Aus · keine PIN" },
+                React.createElement(AuthSettings, { auth: auth, onAuth: onAuth, onLock: onLock })),
+            React.createElement(Accordion, { title: "Bereiche ein- und ausblenden", sub: Object.values(hid).filter(Boolean).length ? `${Object.values(hid).filter(Boolean).length} ausgeblendet` : "Alles sichtbar" },
+                React.createElement("p", { className: "muted" }, "Schalte aus, was du nicht brauchst, zum Beispiel Stickmaschine oder Plotter. Deine Daten bleiben erhalten, nur die Bereiche verschwinden."),
+                React.createElement("p", { className: "flabel" }, "Hauptseiten"),
+                [["hochzeiten", "Hochzeiten"], ["auftraege", "Aufträge"], ["werkstatt", "Werkstatt"], ["anleitungen", "Anleitungen"]].map(([k, l]) => (React.createElement(SwitchRow, { key: k, label: l, on: !hid[k], onChange: (v) => set({ hide: { ...hid, [k]: !v } }) }))),
+                React.createElement("p", { className: "flabel", style: { marginTop: 14 } }, "In der Werkstatt"),
+                [["druck", "3D-Druck"], ["stick", "Stickmaschine"], ["plot", "Plotter"], ["neu", "Anschaffungen"], ["strom", "Stromkosten"]].map(([k, l]) => (React.createElement(SwitchRow, { key: k, label: l, on: !hid[k], onChange: (v) => set({ hide: { ...hid, [k]: !v } }) })))),
             React.createElement(Accordion, { defaultOpen: true, title: "Darstellung", sub: `${{ light: "Hell", dark: "Dunkel", auto: "Automatisch" }[s.mode || "light"]} · Ansicht ${{ auto: "automatisch", phone: "Smartphone", desktop: "Desktop" }[s.layout || "auto"]}` },
                 React.createElement("p", { className: "flabel" }, "Farbmodus"),
                 React.createElement("div", { className: "chips" }, [["light", "Hell"], ["dark", "Dunkel"], ["auto", "Wie das Gerät"]].map(([k, l]) => (React.createElement("button", { key: k, className: "chip" + ((s.mode || "light") === k ? " on" : ""), onClick: () => set({ mode: k }) }, l)))),
@@ -1603,7 +2521,10 @@ function SettingsView({ s, setS, onReset, onExport, onImport, onApplyBox, hasDem
                 React.createElement("p", { className: "muted" }, "Wenn du die App online aktualisierst, siehst du hier die neue Versionsnummer.")),
             React.createElement(Accordion, { title: "Zur\u00FCcksetzen", sub: "Alle Preise, Listen und Farben auf Standard" },
                 React.createElement("p", { className: "muted" }, "Deine Hochzeiten, Auftr\u00E4ge und Anleitungen bleiben erhalten."),
-                React.createElement(ConfirmButton, { onConfirm: onReset, label: "Einstellungen zur\u00FCcksetzen", askLabel: "Wirklich zur\u00FCcksetzen?" }))))));
+                React.createElement(ConfirmButton, { onConfirm: onReset, label: "Einstellungen zur\u00FCcksetzen", askLabel: "Wirklich zur\u00FCcksetzen?" }),
+                React.createElement("p", { className: "flabel", style: { marginTop: 18 } }, "Alles l\u00F6schen"),
+                React.createElement("p", { className: "muted" }, "L\u00F6scht alle Hochzeiten, Auftr\u00E4ge, Anleitungen, Werkstatt-Projekte, Notizb\u00FCcher, Einstellungen und die Anmeldung auf diesem Ger\u00E4t. Das geht nicht r\u00FCckg\u00E4ngig. Mach vorher eine Sicherung."),
+                React.createElement(FiveConfirm, { label: "Alle Daten l\u00F6schen", onConfirm: onResetAll }))))));
 }
 /* ───────────── Karten ───────────── */
 function WeddingCard({ w, onOpen }) {
@@ -1668,6 +2589,16 @@ function GuideCard({ g, s, onOpen }) {
 const nf = (n, d = 1) => (isFinite(n) ? n.toLocaleString("de-DE", { maximumFractionDigits: d }) : "–");
 const mh = (price, years, hrsYear, maintPct) => (price / Math.max(years, 0.1) + (price * (maintPct || 0)) / 100) / Math.max(hrsYear, 1);
 const rate = (m) => mh(m.price, m.years, m.hrsYear, m.maint);
+/* Watt beim Drucken: Normalbetrieb × Faktor des Materials. Ältere Materialien mit festem Watt-Wert funktionieren weiter. */
+const matWatt = (m, mat) => (mat && mat.factor != null ? (m.watt || 0) * mat.factor : (mat && mat.watt) || m.watt || 0);
+const partsOf = (v) => {
+    const ps = v.parts || [];
+    if (ps.some((p) => p.mat || p.grams > 0))
+        return ps;
+    if (v.mat)
+        return [{ id: "p0", label: "", mat: v.mat, grams: v.grams || 0, hours: v.hours || 0, notes: "", images: [] }];
+    return ps;
+};
 const A4_M2 = 0.21 * 0.297;
 const QTY_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 20, 25, 30, 40, 50, 75, 100].map((n) => [n, `${n} Stück`]);
 const areaOf = (v) => (v.areaMode === "a4" ? (v.sheets || 0) * A4_M2 : v.areaMode === "m2" ? v.m2 || 0 : ((v.w || 0) * (v.h || 0)) / 10000);
@@ -1691,7 +2622,16 @@ function productResult(p) {
         { label: "Gewinn", value: gainAmt, color: "#FFFFFF" },
     ];
     const stats = [["Reiner Gewinn", gainAmt], ["Lohn für deine Arbeit", p.labor], ["Bleibt bei dir", gainAmt + p.labor]];
-    return { price, cost, profit: gainAmt, lines: rows, stats, bar, head: { label: "Empfohlener Verkaufspreis" + (p.qty > 1 ? " pro Stück" : ""), value: eur(price) }, note: p.note || "" };
+    const detail = {
+        material: { label: "Material", total: p.material, items: p.materialItems || [] },
+        power: { label: "Strom", total: p.power, items: p.powerItems || [] },
+        machine: { label: "Maschine", total: p.machine, items: p.machineItems || [] },
+        labor: { label: "Arbeitszeit", total: p.labor, items: p.laborItems || [] },
+        waste: { label: p.wasteLabel || "Fehldruck", total: waste, items: [[`${nf(p.failPct || 0, 0)} % auf Material, Strom und Maschine`, eur(waste)]] },
+        other: { label: "Sonstiges", total: p.other || 0, items: p.otherItems || [] },
+        gain: { label: `Gewinn ${nf(p.gain || 0, 0)} %`, total: gainAmt, items: [[`${nf(p.gain || 0, 0)} % auf die Selbstkosten von ${eur(cost)}`, eur(gainAmt)]] },
+    };
+    return { price, cost, profit: gainAmt, detail, lines: rows, stats, bar, head: { label: "Empfohlener Verkaufspreis" + (p.qty > 1 ? " pro Stück" : ""), value: eur(price) }, note: p.note || "" };
 }
 /* Fotobox: wird für Fotobox-Aufträge und die Fotobox-Einstellungen genutzt */
 function boxCalc(m, s, v) {
@@ -1759,31 +2699,106 @@ const CALCS = [
         },
     },
     {
-        id: "druck", title: "3D-Druck", sub: "Was kostet ein Druckauftrag und was kannst du dafür verlangen? Drucker, Materialpreise, Zuschläge und Gewinn stehen in den Einstellungen unter Maschinen.",
+        id: "druck", title: "3D-Druck", sub: "Was kostet ein Druckauftrag und was kannst du dafür verlangen? Du kannst mehrere Filamente in einem Projekt einplanen. Drucker, Materialpreise, Zuschläge und Gewinn stehen in den Einstellungen unter Maschinen.",
         icon: Box, tone: "k",
-        hint: "Wähle Material, Verbrauch und Druckdauer. Dann erscheint hier der Preis.",
-        ready: (v) => !!v.mat && v.grams > 0 && v.hours > 0,
+        hint: "Wähle bei mindestens einem Teil das Material, die Menge und die Druckdauer. Dann erscheint hier der Preis.",
+        ready: (v) => partsOf(v).some((p) => p.mat && p.grams > 0 && p.hours > 0),
         machine: { id: "druck", info: machineInfo("druck", "3D-Drucker") },
-        groups: [{ title: "Dein Auftrag", fields: [
-                    { k: "mat", type: "select", label: "Material", options: (s) => s.machines.druck.materials.map((m) => [m.id, `${m.name} · ${eur(m.price)} pro kg`]) },
-                    { k: "grams", type: "slider", label: "Material-Verbrauch", unit: "g", min: 0, max: 2000, step: 10 },
-                    { k: "hours", type: "slider", label: "Druckdauer", unit: "Std.", min: 0, max: 72, step: 0.5 },
-                    { k: "minutes", type: "slider", label: "Arbeitszeit", unit: "Min.", min: 0, max: 240, step: 5, hint: "Modell, Vorbereitung, Nacharbeit" },
-                    { k: "other", type: "slider", label: "Sonstiges", unit: "€", min: 0, max: 50, step: 0.5, hint: "Verpackung, Versand" },
-                ] }],
-        defaults: () => ({ mat: "", grams: 0, hours: 0, minutes: 0, other: 0 }),
+        groups: [
+            { title: "Filamente in diesem Projekt", fields: [{ k: "parts", type: "parts" }] },
+            { title: "Weitere Angaben", fields: [
+                    { k: "minutes", type: "slider", label: "Arbeitszeit", unit: "Min.", min: 0, max: 600, step: 5, hint: "Modell, Vorbereitung, Nacharbeit" },
+                    { k: "other", type: "slider", label: "Sonstiges", unit: "€", min: 0, max: 100, step: 0.5, hint: "Verpackung, Versand, Schrauben" },
+                ] },
+        ],
+        defaults: () => ({ parts: [{ id: "p0", label: "", mat: "", grams: 0, hours: 0, notes: "", images: [] }], minutes: 0, other: 0 }),
         compute: (v, s) => {
             const m = s.machines.druck;
-            const mat = m.materials.find((x) => x.id === v.mat) || { name: "Material", price: 0 };
-            const r = productResult({
-                material: (v.grams / 1000) * mat.price, power: (m.watt / 1000) * v.hours * s.shop.kwh,
-                machine: rate(m) * v.hours, labor: (v.minutes / 60) * s.wage,
-                other: v.other, failPct: m.failPct, gain: s.shop.gain, wasteLabel: `Fehldruck-Zuschlag ${nf(m.failPct, 0)} %`,
+            const used = partsOf(v).filter((p) => p.mat).map((p) => {
+                const mat = m.materials.find((x) => x.id === p.mat) || { name: "Material", price: 0 };
+                return { p, mat, w: matWatt(m, mat) };
             });
-            r.lines.push([`${mat.name} pro 100 g`, eur((mat.price / 1000) * 100)]);
-            if (v.grams > 0)
-                r.lines.push(["Verkaufspreis pro 100 g", eur((r.price / v.grams) * 100)]);
+            const kwh = s.shop.kwh;
+            const hours = used.reduce((a, u) => a + (u.p.hours || 0), 0);
+            const grams = used.reduce((a, u) => a + (u.p.grams || 0), 0);
+            const material = used.reduce((a, u) => a + ((u.p.grams || 0) / 1000) * u.mat.price, 0);
+            const idleH = Math.max(0, (m.onHours || 0) - m.hrsYear);
+            const standbyPerH = ((m.standbyW || 0) / 1000) * kwh * (idleH / Math.max(m.hrsYear, 1));
+            const heatEach = ((m.peakW || 0) / 1000) * ((m.heatMin || 0) / 60) * kwh;
+            const printPower = used.reduce((a, u) => a + (u.w / 1000) * (u.p.hours || 0) * kwh, 0);
+            const power = printPower + standbyPerH * hours + heatEach * used.length;
+            const laborH = (v.minutes || 0) / 60;
+            const r = productResult({
+                material, power, machine: rate(m) * hours, labor: laborH * s.wage,
+                other: v.other, failPct: m.failPct, gain: s.shop.gain, wasteLabel: `Fehldruck-Zuschlag ${nf(m.failPct, 0)} %`,
+                materialItems: used.map((u) => [`${u.p.label || u.mat.name} · ${u.mat.name} · ${nf(u.p.grams || 0, 0)} g`, eur(((u.p.grams || 0) / 1000) * u.mat.price)]),
+                powerItems: [
+                    ...used.map((u) => [`Drucken ${u.p.label || u.mat.name}: ${nf(u.p.hours || 0, 1)} Std. × ${nf(u.w, 0)} W`, eur((u.w / 1000) * (u.p.hours || 0) * kwh)]),
+                    ...(heatEach > 0 ? [[`Aufheizen ${used.length}× (${nf(m.peakW, 0)} W, ${nf(m.heatMin, 0)} Min.)`, eur(heatEach * used.length)]] : []),
+                    ...(standbyPerH * hours > 0 ? [["Standby-Anteil", eur(standbyPerH * hours)]] : []),
+                ],
+                machineItems: [
+                    [`Abschreibung: ${eur(m.price)} über ${nf(m.years, 0)} Jahre`, eur(m.price / Math.max(m.years, 0.1) / Math.max(m.hrsYear, 1) * hours)],
+                    [`Verschleiß und Wartung: ${nf(m.maint, 0)} % pro Jahr`, eur((m.price * m.maint / 100) / Math.max(m.hrsYear, 1) * hours)],
+                    [`Druckstunden: ${nf(hours, 1)} Std.`, ""],
+                ],
+                laborItems: [[`${nf(v.minutes || 0, 0)} Min. × ${eur(s.wage)} pro Stunde`, eur(laborH * s.wage)]],
+                otherItems: v.other ? [["Verpackung, Versand, Schrauben", eur(v.other)]] : [],
+            });
+            used.forEach((u, i) => r.lines.push([u.p.label || `Teil ${i + 1}`, `${u.mat.name} · ${nf(u.p.grams || 0, 0)} g · ${nf(u.p.hours || 0, 1)} Std. · ${eur(((u.p.grams || 0) / 1000) * u.mat.price)}`]));
+            const byMat = {};
+            used.forEach((u) => { byMat[u.mat.name] = (byMat[u.mat.name] || 0) + (u.p.grams || 0); });
+            Object.keys(byMat).forEach((name) => r.lines.push([`Du brauchst ${name}`, `${nf(byMat[name] / 1000, 2)} kg`]));
+            const seen = new Set();
+            used.forEach((u) => { if (seen.has(u.mat.id))
+                return; seen.add(u.mat.id); r.lines.push([`Strom bei ${u.mat.name}`, `${nf(u.w, 0)} Watt${u.mat.nozzle ? ` · Düse ${nf(u.mat.nozzle, 0)} °C` : ""}${u.mat.bed ? ` · Bett ${nf(u.mat.bed, 0)} °C` : ""}`]); });
+            if (heatEach > 0)
+                r.lines.push([`Aufheizen (${used.length}×, ${nf(m.peakW, 0)} W, ${nf(m.heatMin, 0)} Min.)`, eur(heatEach * used.length)]);
+            if (standbyPerH > 0)
+                r.lines.push(["Standby-Anteil pro Druckstunde", eur(standbyPerH)]);
+            if (grams > 0)
+                r.lines.push(["Verkaufspreis pro 100 g", eur((r.price / grams) * 100)]);
             return r;
+        },
+    },
+    {
+        id: "strom", title: "Stromkosten pro Jahr", sub: "Was verbraucht der 3D-Drucker im Jahr? Mit dem Strombedarf je Material und mit Standby. Du trägst die Druckstunden ein.",
+        icon: Zap, tone: "j", foot: "So wird gerechnet: Druckstunden × Watt des Materials ergibt den Verbrauch beim Drucken. Dazu kommt der Standby für alle Stunden, in denen der Drucker an ist, aber nicht druckt. Die Watt-Werte und den Strompreis stellst du unter Einstellungen → Maschinen ein.",
+        hint: "Trage ein, wie viele Stunden im Jahr du mit welchem Material druckst. Dann erscheinen hier Verbrauch und Kosten.",
+        ready: (v) => Object.keys(v).filter((k) => k.startsWith("h_")).reduce((a, k) => a + (v[k] || 0), 0) > 0,
+        machine: { id: "druck", info: (s) => { const m = s.machines.druck; return { label: "3D-Drucker", big: `${nf(m.standbyW || 0, 0)} Watt im Standby`, small: `Strompreis ${eur(s.shop.kwh)} pro kWh` }; } },
+        groups: [
+            { title: "Druckstunden pro Jahr", grid: true, fields: (s) => s.machines.druck.materials.map((m) => ({ k: "h_" + m.id, label: m.name, suffix: "Std.", hint: `${nf(matWatt(s.machines.druck, m), 0)} Watt beim Drucken` })) },
+            { title: "Wie lange ist der Drucker an?", fields: [
+                    { k: "mode", type: "select", placeholder: false, label: "Der Drucker ist eingeschaltet", options: () => [["print", "Nur beim Drucken"], ["always", "Die ganze Zeit (8.760 Std. im Jahr)"], ["custom", "Eigene Stunden"]] },
+                    { k: "onH", label: "Stunden pro Jahr eingeschaltet", suffix: "Std.", hint: "Zum Beispiel 4.000 Std. bei etwa 11 Std. pro Tag", showIf: (v) => v.mode === "custom" },
+                ] },
+        ],
+        defaults: () => ({ mode: "print", onH: 0 }),
+        compute: (v, s) => {
+            const m = s.machines.druck;
+            const rows = m.materials.map((x) => ({ x, h: v["h_" + x.id] || 0, w: matWatt(m, x) })).filter((r) => r.h > 0);
+            const printH = rows.reduce((a, r) => a + r.h, 0);
+            const printKwh = rows.reduce((a, r) => a + (r.h * r.w) / 1000, 0);
+            const onH = v.mode === "always" ? 8760 : v.mode === "custom" ? Math.max(v.onH || 0, printH) : printH;
+            const idleH = Math.max(0, onH - printH);
+            const idleKwh = (idleH * (m.standbyW || 0)) / 1000;
+            const kwh = printKwh + idleKwh, price = s.shop.kwh;
+            const lines = [
+                ["Druckstunden gesamt", `${nf(printH, 0)} Std.`],
+                ...rows.map((r) => [`${r.x.name}: ${nf(r.h, 0)} Std. × ${nf(r.w, 0)} W`, `${nf((r.h * r.w) / 1000, 0)} kWh · ${eur(((r.h * r.w) / 1000) * price)}`]),
+                ["Strom beim Drucken", `${nf(printKwh, 0)} kWh · ${eur(printKwh * price)}`, true],
+                [`Standby: ${nf(idleH, 0)} Std. × ${nf(m.standbyW || 0, 0)} W`, `${nf(idleKwh, 0)} kWh · ${eur(idleKwh * price)}`],
+                ["Gesamtverbrauch pro Jahr", `${nf(kwh, 0)} kWh`, true],
+                ["Kosten pro Monat", eur((kwh * price) / 12)],
+                ["Kosten pro Druckstunde, inklusive Standby", eur((kwh * price) / Math.max(printH, 1))],
+                ["Strompreis", `${eur(price)} pro kWh`],
+            ];
+            return {
+                head: { label: "Stromkosten pro Jahr", value: eur(kwh * price) },
+                lines,
+                note: idleH > 0 && m.standbyW > 0 ? `Wenn du den Drucker ausschaltest, sobald er nichts druckt, sparst du etwa ${eur(idleKwh * price)} im Jahr.` : "",
+            };
         },
     },
     {
@@ -1809,11 +2824,28 @@ const CALCS = [
             const bobPerM = m.bobSpool.price / Math.max(m.bobSpool.len, 1);
             const topM = v.stitchesK * m.topM, bobM = v.stitchesK * m.bobM;
             const thread = topM * topPerM + bobM * bobPerM;
+            const laborS = hours * (m.attend / 100) * s.wage + (((m.setupMin + m.digitMin) / 60) * s.wage) / q;
             const r = productResult({
                 material: thread + m.stab + prod.price, power: (m.watt / 1000) * hours * s.shop.kwh,
                 machine: rate(m) * hours,
-                labor: hours * (m.attend / 100) * s.wage + (((m.setupMin + m.digitMin) / 60) * s.wage) / q,
+                labor: laborS,
                 other: v.other, gain: s.shop.gain, qty: q, note: q > 1 ? "Einrichten und Stickdatei sind auf die Stückzahl verteilt." : "",
+                materialItems: [
+                    [`Rohling: ${prod.name}`, eur(prod.price)],
+                    [`Oberfaden: ${nf(topM, 0)} m`, eur(topM * topPerM)],
+                    [`Unterfaden: ${nf(bobM, 0)} m`, eur(bobM * bobPerM)],
+                    [`Vlies / Stabilisator`, eur(m.stab)],
+                ],
+                powerItems: [[`${nf(hours * 60, 0)} Min. × ${nf(m.watt, 0)} W`, eur((m.watt / 1000) * hours * s.shop.kwh)]],
+                machineItems: [
+                    [`Abschreibung über ${nf(m.years, 0)} Jahre`, eur(m.price / Math.max(m.years, 0.1) / Math.max(m.hrsYear, 1) * hours)],
+                    [`Verschleiß und Wartung: ${nf(m.maint, 0)} % pro Jahr`, eur((m.price * m.maint / 100) / Math.max(m.hrsYear, 1) * hours)],
+                ],
+                laborItems: [
+                    [`Sticken: ${nf(hours * (m.attend / 100) * 60, 0)} Min. eigene Zeit`, eur(hours * (m.attend / 100) * s.wage)],
+                    [`Einrichten und Stickdatei${q > 1 ? ` (auf ${q} Stück verteilt)` : ""}`, eur((((m.setupMin + m.digitMin) / 60) * s.wage) / q)],
+                ],
+                otherItems: v.other ? [["Verpackung, Etikett", eur(v.other)]] : [],
             });
             r.lines.push([`Rohling: ${prod.name}`, eur(prod.price)]);
             r.lines.push(["Stickzeit pro Stück", `${nf(hours * 60, 0)} Min.`]);
@@ -1857,11 +2889,27 @@ const CALCS = [
             const areaW = area * (1 + m.waste / 100);
             const prod = v.prod ? s.products.find((x) => x.id === v.prod) : null;
             const plotH = v.plotMin / 60;
+            const laborP = (m.weedMin / 60) * s.wage + ((m.prepMin / 60) * s.wage) / q;
             const r = productResult({
                 material: areaW * perM2 + (needsT ? areaW * transM2 : 0) + (prod ? prod.price : 0),
                 power: (m.watt / 1000) * plotH * s.shop.kwh, machine: rate(m) * plotH + m.wear,
-                labor: (m.weedMin / 60) * s.wage + ((m.prepMin / 60) * s.wage) / q,
+                labor: laborP,
                 other: v.other, gain: s.shop.gain, qty: q, note: q > 1 ? "Das Design ist auf die Stückzahl verteilt." : "",
+                materialItems: [
+                    [`${foil.name}: ${nf(areaW / A4_M2, 1)} × DIN A4 inkl. ${nf(m.waste, 0)} % Verschnitt`, eur(areaW * perM2)],
+                    ...(needsT ? [["Transferfolie", eur(areaW * transM2)]] : []),
+                    ...(prod ? [[`Rohling: ${prod.name}`, eur(prod.price)]] : []),
+                ],
+                powerItems: [[`${nf(v.plotMin, 0)} Min. × ${nf(m.watt, 0)} W`, eur((m.watt / 1000) * plotH * s.shop.kwh)]],
+                machineItems: [
+                    [`Abschreibung über ${nf(m.years, 0)} Jahre`, eur(m.price / Math.max(m.years, 0.1) / Math.max(m.hrsYear, 1) * plotH)],
+                    [`Messer-Verschleiß`, eur(m.wear)],
+                ],
+                laborItems: [
+                    [`Entgittern und Aufbringen: ${nf(m.weedMin, 0)} Min.`, eur((m.weedMin / 60) * s.wage)],
+                    [`Design und Vorbereitung${q > 1 ? ` (auf ${q} Stück verteilt)` : ""}: ${nf(m.prepMin, 0)} Min.`, eur(((m.prepMin / 60) * s.wage) / q)],
+                ],
+                otherItems: v.other ? [["Sonstiges", eur(v.other)]] : [],
             });
             r.lines.push(["Fläche pro Stück", `${nf(area * 10000, 0)} cm² (${nf(area / A4_M2, 1)} × DIN A4)`]);
             r.lines.push([`${foil.name}: Preis pro m²`, eur(perM2)]);
@@ -1890,9 +2938,9 @@ function SliderRow({ label, hint, value, min, max, step, unit, onChange }) {
             React.createElement("button", { type: "button", className: "step", "aria-label": "mehr", onClick: () => onChange(fix(v + step)) }, "+")),
         hint && React.createElement("span", { className: "hint" }, hint)));
 }
-const KIND_NAME = { druck: "3D-Druck", stick: "Stickerei", plot: "Plotter", neu: "Anschaffung" };
+const KIND_NAME = { druck: "3D-Druck", stick: "Stickerei", plot: "Plotter", neu: "Anschaffung", strom: "Stromkosten" };
 const snapWork = (s) => JSON.parse(JSON.stringify({ machines: s.machines, products: s.products.map(({ image, ...p }) => p), shop: s.shop, wage: s.wage }));
-const workSettings = (s, w) => (w.snap ? { ...s, machines: w.snap.machines, products: w.snap.products, shop: w.snap.shop, wage: w.snap.wage } : s);
+const workSettings = (s, w) => (w.snap && !isCalcOnly(w.kind) ? { ...s, machines: w.snap.machines, products: w.snap.products, shop: w.snap.shop, wage: w.snap.wage } : s);
 const workResult = (s, w) => {
     const calc = CALCS.find((c) => c.id === w.kind);
     const sx = workSettings(s, w);
@@ -1900,14 +2948,143 @@ const workResult = (s, w) => {
     const ready = calc.ready(vals);
     return { calc, sx, vals, ready, res: ready ? calc.compute(vals, sx) : null };
 };
+const workPrice = (s, w) => {
+    if (isCalcOnly(w.kind))
+        return 0;
+    const r = workResult(s, w);
+    return r.ready && r.res.price ? r.res.price * Math.max(r.vals.qty || 1, 1) : 0;
+};
+function workGroup(all, x) {
+    const map = new Map(all.map((w) => [w.id, w]));
+    map.set(x.id, x);
+    const adj = new Map();
+    const add = (a, b) => { if (!adj.has(a))
+        adj.set(a, new Set()); adj.get(a).add(b); };
+    map.forEach((w) => (w.links || []).forEach((l) => { if (map.has(l.id)) {
+        add(w.id, l.id);
+        add(l.id, w.id);
+    } }));
+    const seen = new Set([x.id]);
+    const queue = [x.id];
+    const out = [];
+    while (queue.length) {
+        const id = queue.shift();
+        (adj.get(id) || new Set()).forEach((n) => { if (!seen.has(n)) {
+            seen.add(n);
+            queue.push(n);
+            out.push(map.get(n));
+        } });
+    }
+    return out;
+}
+const noteFor = (all, x, m) => {
+    const pool = [x, ...all.filter((o) => o.id !== x.id)];
+    for (const o of pool) {
+        const l = (o.links || []).find((q) => q.id === m.id && q.note);
+        if (l)
+            return l.note;
+    }
+    const back = (m.links || []).find((q) => q.id === x.id && q.note);
+    return back ? back.note : "";
+};
+function LinkedProjects({ w, update, allWork, s }) {
+    const [pick, setPick] = useState("");
+    const [note, setNote] = useState("");
+    const direct = w.links || [];
+    const members = workGroup(allWork, w);
+    const others = allWork.filter((o) => o.id !== w.id && !isCalcOnly(o.kind) && !direct.some((l) => l.id === o.id));
+    const own = workPrice(s, w);
+    const sum = members.reduce((a, m) => a + workPrice(s, m), own);
+    const label = (o) => `${KIND_NAME[o.kind]}: ${o.title || "Ohne Titel"}${o.customer ? ` (${o.customer})` : ""}`;
+    const add = () => { if (!pick)
+        return; update({ links: [...direct, { id: pick, note: note.trim() }] }); setPick(""); setNote(""); };
+    return (React.createElement("div", null,
+        members.length === 0 && React.createElement("p", { className: "hint" }, "Verkn\u00FCpfe Projekte, die zusammengeh\u00F6ren, zum Beispiel eine gedruckte Platte mit einem Patch oder einem Plotter-Sticker. Die Verkn\u00FCpfung gilt in beide Richtungen."),
+        members.map((m) => {
+            const dl = direct.find((l) => l.id === m.id);
+            const c = CALCS.find((x) => x.id === m.kind);
+            const Icon = c.icon;
+            const nt = dl ? dl.note : noteFor(allWork, w, m);
+            return (React.createElement("div", { className: "linkrow", key: m.id },
+                React.createElement("div", { className: "tile " + c.tone },
+                    React.createElement(Icon, { size: 18 })),
+                React.createElement("div", { className: "linkbody" },
+                    React.createElement("strong", null, m.title || KIND_NAME[m.kind]),
+                    React.createElement("small", null, [KIND_NAME[m.kind], m.customer].filter(Boolean).join(" · ")),
+                    dl ? (React.createElement("input", { value: dl.note || "", placeholder: "Wo geh\u00F6rt es hin?", onChange: (e) => update({ links: direct.map((l) => (l.id === m.id ? { ...l, note: e.target.value } : l)) }) })) : nt ? React.createElement("span", { className: "linknote" }, nt) : null),
+                React.createElement("div", { className: "linkside" },
+                    React.createElement("b", null, eur(workPrice(s, m))),
+                    dl && React.createElement("button", { type: "button", className: "icon", "aria-label": "Verkn\u00FCpfung l\u00F6sen", onClick: () => update({ links: direct.filter((l) => l.id !== m.id) }) },
+                        React.createElement(X, { size: 16 })))));
+        }),
+        others.length > 0 && (React.createElement("div", { className: "linkadd" },
+            React.createElement("select", { value: pick, onChange: (e) => setPick(e.target.value), "aria-label": "Projekt verkn\u00FCpfen" },
+                React.createElement("option", { value: "" }, "Projekt verkn\u00FCpfen \u2026"),
+                others.map((o) => React.createElement("option", { key: o.id, value: o.id }, label(o)))),
+            pick && (React.createElement(React.Fragment, null,
+                React.createElement("input", { value: note, placeholder: "Wo geh\u00F6rt es hin? z. B. Patch oben links auf die Platte", onChange: (e) => setNote(e.target.value) }),
+                React.createElement("button", { type: "button", className: "btn small", onClick: add },
+                    React.createElement(Plus, { size: 16 }),
+                    " Verkn\u00FCpfen"))))),
+        members.length > 0 && (React.createElement("div", { className: "linksum" },
+            React.createElement("div", null,
+                React.createElement("span", null, "Dieses Projekt"),
+                React.createElement("b", null, eur(own))),
+            React.createElement("div", null,
+                React.createElement("span", null,
+                    "Verkn\u00FCpfte Teile (",
+                    members.length,
+                    ")"),
+                React.createElement("b", null, eur(sum - own))),
+            React.createElement("div", { className: "strong" },
+                React.createElement("span", null, "Gesamtpreis des Verbunds"),
+                React.createElement("b", null, eur(sum)))))));
+}
+function TodoProject({ p, onToggle, onOpen }) {
+    const [openIt, setOpenIt] = useState(false);
+    const done = p.list.filter((i) => i.done).length;
+    const rest = p.list.filter((i) => !i.done);
+    return (React.createElement("div", { className: "todop " + p.kind + (openIt ? " open" : "") },
+        React.createElement("button", { type: "button", className: "todoh", onClick: () => setOpenIt(!openIt), "aria-expanded": openIt },
+            React.createElement("span", { className: "todobar" }),
+            React.createElement("span", { className: "todot" },
+                React.createElement("strong", null, p.title),
+                React.createElement("small", null,
+                    KLBL[p.kind],
+                    p.sub ? ` · ${p.sub}` : "")),
+            React.createElement("span", { className: "todon" },
+                done,
+                "/",
+                p.list.length),
+            React.createElement(ChevronDown, { size: 18 })),
+        openIt && (React.createElement("div", { className: "todob" },
+            rest.map((i) => (React.createElement("div", { className: "ck", key: i.id },
+                React.createElement("button", { type: "button", className: "cbox", "aria-label": "abhaken", onClick: () => onToggle(p.kind, p.id, i.id) }),
+                React.createElement("span", { className: "ctext" }, i.text)))),
+            React.createElement("button", { type: "button", className: "link subtle", onClick: () => onOpen(p.kind, p.id) }, "Projekt \u00F6ffnen")))));
+}
 function ResultCard({ calc, res }) {
     const parts = res.bar ? res.bar.filter((b) => b.value > 0.005) : [];
+    const [tab, setTab] = useState("");
+    const order = res.detail ? ["material", "power", "machine", "labor", "waste", "other", "gain"].filter((k) => res.detail[k] && (res.detail[k].total > 0.004 || k === "gain")) : [];
+    const cur = res.detail && tab && res.detail[tab] ? res.detail[tab] : null;
     return (React.createElement("div", { className: "ratecard", style: { background: `var(--c-${calc.tone})`, color: `var(--on-${calc.tone})` } },
         React.createElement("span", null, res.head.label),
         React.createElement("strong", null, res.head.value),
         res.stats && (React.createElement("div", { className: "profit" }, res.stats.map(([l, v], i) => React.createElement("div", { key: l, className: i === 0 ? "main" : "" },
             React.createElement("span", null, l),
             React.createElement("b", null, eur(v)))))),
+        res.detail && order.length > 0 && (React.createElement("div", { className: "dtabs", role: "tablist" }, order.map((k) => (React.createElement("button", { key: k, type: "button", role: "tab", "aria-selected": tab === k, className: "dtab" + (tab === k ? " on" : ""), onClick: () => setTab(tab === k ? "" : k) },
+            React.createElement("span", null, res.detail[k].label),
+            React.createElement("b", null, eur(res.detail[k].total))))))),
+        cur && (React.createElement("div", { className: "dpanel" },
+            React.createElement("div", { className: "dhead" },
+                React.createElement("strong", null, cur.label),
+                React.createElement("b", null, eur(cur.total))),
+            cur.items.length === 0 && React.createElement("p", { className: "dempty" }, "Hier gibt es noch keine Posten."),
+            cur.items.map(([l, v], i) => React.createElement("div", { key: i, className: "drow" },
+                React.createElement("span", null, l),
+                React.createElement("b", null, typeof v === "number" ? eur(v) : v))))),
         parts.length > 0 && (React.createElement(React.Fragment, null,
             React.createElement("div", { className: "stackbar", "aria-hidden": "true" }, parts.map((b) => React.createElement("i", { key: b.label, style: { flexGrow: b.value, background: b.color } }))),
             React.createElement("div", { className: "legend2" }, parts.map((b) => React.createElement("span", { key: b.label },
@@ -1920,10 +3097,56 @@ function ResultCard({ calc, res }) {
             React.createElement("b", null, val)))),
         res.note && React.createElement("small", null, res.note)));
 }
+function FilamentParts({ parts, materials, onChange }) {
+    const list = parts.length ? parts : [{ id: "p0", label: "", mat: "", grams: 0, hours: 0, notes: "", images: [] }];
+    const upd = (id, p) => onChange(list.map((x) => (x.id === id ? { ...x, ...p } : x)));
+    return (React.createElement("div", { className: "parts" },
+        list.map((p, i) => {
+            const mat = materials.find((x) => x.id === p.mat);
+            return (React.createElement("div", { className: "part", key: p.id },
+                React.createElement("div", { className: "parthead" },
+                    React.createElement("strong", null, p.label || `Teil ${i + 1}`),
+                    list.length > 1 && React.createElement("button", { type: "button", className: "icon", "aria-label": "Teil entfernen", onClick: () => onChange(list.filter((x) => x.id !== p.id)) },
+                        React.createElement(X, { size: 16 }))),
+                React.createElement(Field, { label: "Wof\u00FCr ist das Teil?" },
+                    React.createElement("input", { value: p.label || "", placeholder: "z. B. T\u00FCr der Box", onChange: (e) => upd(p.id, { label: e.target.value }) })),
+                React.createElement(Field, { label: "Material" },
+                    React.createElement("select", { value: p.mat || "", onChange: (e) => upd(p.id, { mat: e.target.value }) },
+                        React.createElement("option", { value: "" }, "\u2013 w\u00E4hlen \u2013"),
+                        materials.map((x) => React.createElement("option", { key: x.id, value: x.id },
+                            x.name,
+                            " \u00B7 ",
+                            eur(x.price),
+                            " pro kg")))),
+                React.createElement(SliderRow, { label: "Menge", unit: "g", min: 0, max: 10000, step: 10, value: p.grams, onChange: (v) => upd(p.id, { grams: v }), hint: "Bis 10 kg" }),
+                React.createElement("div", { className: "quickg" },
+                    [100, 500, 1000].map((n) => (React.createElement("button", { key: n, type: "button", className: "chip", onClick: () => upd(p.id, { grams: Math.min(10000, (p.grams || 0) + n) }) },
+                        "+",
+                        n >= 1000 ? `${n / 1000} kg` : `${n} g`))),
+                    React.createElement("button", { type: "button", className: "chip", onClick: () => upd(p.id, { grams: 0 }) }, "Null")),
+                React.createElement(SliderRow, { label: "Druckdauer", unit: "Std.", min: 0, max: 300, step: 0.5, value: p.hours, onChange: (v) => upd(p.id, { hours: v }) }),
+                mat && p.grams > 0 && React.createElement("p", { className: "hint partcost" },
+                    mat.name,
+                    ": ",
+                    nf(p.grams / 1000, 2),
+                    " kg kosten ",
+                    eur((p.grams / 1000) * mat.price)),
+                React.createElement(Field, { label: "Notizen zu diesem Teil" },
+                    React.createElement("textarea", { rows: 2, value: p.notes || "", placeholder: "Farbe, Ma\u00DFe, D\u00FCse, Besonderheiten \u2026", onChange: (e) => upd(p.id, { notes: e.target.value }) })),
+                React.createElement("p", { className: "flabel" }, "Bilder und Skizzen zu diesem Teil"),
+                React.createElement(GalleryField, { images: p.images || [], onChange: (v) => upd(p.id, { images: v }), max: 4, sketch: true })));
+        }),
+        React.createElement("button", { type: "button", className: "btn small soft", onClick: () => onChange([...list, { id: uid(), label: "", mat: "", grams: 0, hours: 0, notes: "", images: [] }]) },
+            React.createElement(Plus, { size: 16 }),
+            " Filament hinzuf\u00FCgen")));
+}
 function CalcFields({ calc, vals, setVal, s, imgs }) {
     return calc.groups.map((g) => (React.createElement(Section, { key: g.title, title: g.title },
-        React.createElement("div", { className: g.grid ? "grid2" : "fieldlist" }, g.fields.filter((f) => !f.showIf || f.showIf(vals)).map((f) => {
+        React.createElement("div", { className: g.grid ? "grid2" : "fieldlist" }, (typeof g.fields === "function" ? g.fields(s) : g.fields).filter((f) => !f.showIf || f.showIf(vals)).map((f) => {
             var _a, _b;
+            if (f.type === "parts") {
+                return React.createElement(FilamentParts, { key: f.k, parts: partsOf(vals), materials: s.machines.druck.materials, onChange: (v) => setVal({ parts: v, mat: "", grams: 0, hours: 0 }) });
+            }
             if (f.type === "slider") {
                 return React.createElement(SliderRow, { key: f.k, label: f.label, hint: f.hint, unit: f.unit, min: f.min, max: f.max, step: f.step, value: vals[f.k], onChange: (x) => setVal(f.k, x) });
             }
@@ -1940,13 +3163,13 @@ function CalcFields({ calc, vals, setVal, s, imgs }) {
             return field;
         })))));
 }
-function WorkBody({ w, s, update, nb, onNb }) {
+function WorkBody({ w, s, update, nb, onNb, allWork = [] }) {
     const [refOpen, setRefOpen] = useState(false);
     const { calc, sx, vals, ready, res } = workResult(s, w);
     const Icon = calc.icon;
     const info = calc.machine ? calc.machine.info(sx) : null;
-    const isBuy = w.kind === "neu";
-    const setVal = (k, x) => update({ vals: { ...(w.vals || {}), [k]: x } });
+    const isBuy = isCalcOnly(w.kind);
+    const setVal = (k, x) => update({ vals: { ...(w.vals || {}), ...(k && typeof k === "object" ? k : { [k]: x }) } });
     return (React.createElement("div", null,
         w.snap && !isBuy && w.snapFrom && (React.createElement("p", { className: "lockline" },
             React.createElement(Lock, { size: 15 }),
@@ -1954,12 +3177,12 @@ function WorkBody({ w, s, update, nb, onNb }) {
             new Date(w.snapFrom).toLocaleDateString("de-DE"),
             ". Sie bleiben f\u00FCr dieses Projekt unver\u00E4ndert.")),
         React.createElement(Field, { label: "Status" },
-            React.createElement("select", { value: w.status, onChange: (e) => update({ status: e.target.value }) }, (isBuy ? BUY_STATUS : WORK_STATUS).map((x) => React.createElement("option", { key: x }, x)))),
-        React.createElement(Section, { title: isBuy ? "Anschaffung" : "Projekt" },
+            React.createElement("select", { value: w.status, onChange: (e) => update({ status: e.target.value }) }, (isBuy ? calcStatus(w.kind) : WORK_STATUS).map((x) => React.createElement("option", { key: x }, x)))),
+        React.createElement(Section, { title: w.kind === "strom" ? "Berechnung" : isBuy ? "Anschaffung" : "Projekt" },
             !isBuy && React.createElement(Field, { label: "Kunde" },
                 React.createElement("input", { value: w.customer, onChange: (e) => update({ customer: e.target.value }) })),
-            React.createElement(Field, { label: isBuy ? "Was möchtest du anschaffen?" : "Beschreibung" },
-                React.createElement("input", { value: w.title, placeholder: isBuy ? "z. B. Laserplotter" : "z. B. Handyständer", onChange: (e) => update({ title: e.target.value }) })),
+            React.createElement(Field, { label: w.kind === "strom" ? "Bezeichnung" : isBuy ? "Was möchtest du anschaffen?" : "Beschreibung" },
+                React.createElement("input", { value: w.title, placeholder: w.kind === "strom" ? "z. B. Drucker läuft rund um die Uhr" : isBuy ? "z. B. Laserplotter" : "z. B. Handyständer", onChange: (e) => update({ title: e.target.value }) })),
             !isBuy && React.createElement(Field, { label: "F\u00E4llig bis" },
                 React.createElement("input", { type: "date", value: w.date, onChange: (e) => update({ date: e.target.value }) }))),
         ready ? (React.createElement(ResultCard, { calc: calc, res: res })) : (React.createElement("div", { className: "hintcard", style: { borderLeftColor: `var(--c-${calc.tone})` } },
@@ -1975,8 +3198,12 @@ function WorkBody({ w, s, update, nb, onNb }) {
                 React.createElement("strong", null, info.big),
                 React.createElement("small", null, info.small)))),
         React.createElement(CalcFields, { calc: calc, vals: vals, setVal: setVal, s: sx, imgs: s.products }),
+        !isBuy && (React.createElement(Section, { title: "Verkn\u00FCpfte Projekte", aside: "Was geh\u00F6rt wo hin, mit Preis" },
+            React.createElement(LinkedProjects, { w: w, update: update, allWork: allWork, s: s }))),
         !isBuy && (React.createElement(Section, { title: "Bilder und Skizzen", aside: "Vorlage, Wunsch, Ma\u00DFe" },
             React.createElement(GalleryField, { images: w.images || [], onChange: (v) => update({ images: v }), max: 8, sketch: true }))),
+        !isBuy && (React.createElement(Section, { title: "To-dos", aside: `${(w.checklist || []).filter((i) => i.done).length} von ${(w.checklist || []).length} erledigt` },
+            React.createElement(Checklist, { items: w.checklist || [], onChange: (v) => update({ checklist: v }) }))),
         React.createElement(Section, { title: "Notizen" },
             React.createElement("textarea", { rows: 4, value: w.notes, onChange: (e) => update({ notes: e.target.value }), placeholder: "Farbe, Ma\u00DFe, Toleranzen, Bohrungen, Besonderheiten \u2026" }),
             w.kind === "druck" && nb && (React.createElement("button", { type: "button", className: "btn small soft", onClick: () => setRefOpen(true) },
@@ -1991,7 +3218,7 @@ function WorkBody({ w, s, update, nb, onNb }) {
             React.createElement("p", { className: "muted lead" }, "Gewindeeins\u00E4tze, Kernl\u00F6cher, Passungen und deine eigenen Notizen."),
             React.createElement(Notebook, { nb: nb, onChange: onNb })))));
 }
-function WorkCard({ w, s, onOpen }) {
+function WorkCard({ w, s, onOpen, linkCount = 0 }) {
     const { calc, ready, res } = workResult(s, w);
     const Icon = calc.icon;
     const d = w.date ? daysUntil(w.date) : null;
@@ -2001,12 +3228,15 @@ function WorkCard({ w, s, onOpen }) {
         React.createElement("div", { className: "cbody" },
             React.createElement("strong", null, w.title || KIND_NAME[w.kind]),
             React.createElement("span", { className: "sub" }, [KIND_NAME[w.kind], w.customer].filter(Boolean).join(" · ")),
-            w.kind !== "neu" && d !== null && workOpen(w) && React.createElement("span", { className: "sub" }, d < 0 ? `${-d} Tage überfällig` : `fällig ${inDays(d)}`),
+            !isCalcOnly(w.kind) && d !== null && workOpen(w) && React.createElement("span", { className: "sub" }, d < 0 ? `${-d} Tage überfällig` : `fällig ${inDays(d)}`),
+            linkCount > 0 && React.createElement("span", { className: "sub" },
+                linkCount,
+                " verkn\u00FCpft"),
             React.createElement(Pill, { s: w.status })),
-        w.kind !== "neu" && ready && React.createElement("div", { className: "cprice" }, eur(res.price))));
+        !isCalcOnly(w.kind) && ready && React.createElement("div", { className: "cprice" }, eur(workPrice(s, w)))));
 }
 /* ───────────── Beispieldaten ───────────── */
-const dayStr = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+const dayStr = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return localDay(d); };
 const nearDow = (n, dow) => {
     for (const k of [0, 1, -1, 2, -2, 3, -3]) {
         const ds = dayStr(n + k);
@@ -2023,9 +3253,10 @@ function makeDemo(s) {
     const job = (o) => ({ id: uid(), demo: true, name: "", type: "", date: "", time: "", place: "", contact: "", price: 0, status: "Anfrage", notes: "", checklist: [], boxPrints: s.machines.box.prints, boxKm: s.machines.box.km, boxHours: s.machines.box.workH, updatedAt: stamp, ...o });
     const guide = (o) => ({ id: uid(), demo: true, title: "", location: "", date: "", vals: {}, ext: Array(12).fill(""), acc: Array(5).fill(""), text: "", other: "", images: [], diff: {}, updatedAt: stamp, ...o });
     const wk = (o) => ({ id: uid(), demo: true, customer: "", title: "", date: "", status: "Anfrage", notes: "", vals: {}, snap, snapFrom: stamp, updatedAt: stamp, ...o });
+    const idPlatte = uid();
     const ext = (a) => [...a, ...Array(12 - a.length).fill("")];
     const acc = (a) => [...a, ...Array(5 - a.length).fill("")];
-    return {
+    const out = {
         weddings: [
             wed({ bride: "Lena", groom: "Jonas", client: "Lena Hartmann", street: "Elbchaussee 112", city: "Hamburg", date: nearDow(-130, 6), start: "13:00", end: "22:00", guests: 80, portrait: true, km: 60, services: { firstlook: true, gr_braut: true }, extras: { fotobox: true }, delivery: { galerie: true, fotobuch: true }, status: "Bezahlt", notes: "Freie Trauung am Elbufer, Sektempfang um 16 Uhr.", checklist: cl(99) }),
             wed({ bride: "Sophie", groom: "Max", client: "Max Brandt", street: "Am Sande 4", city: "Lüneburg", date: nearDow(-62, 5), start: "12:00", end: "20:00", guests: 55, km: 35, services: { verlobung: true }, extras: { drohne: true, highlight: true }, delivery: { galerie: true, usb: true }, status: "Geliefert", notes: "Kleine Feier im Garten. Drohne erst nach der Trauung.", checklist: cl(99) }),
@@ -2033,7 +3264,7 @@ function makeDemo(s) {
         ],
         jobs: [
             job({ name: "Familie Weber", type: "babybauch", date: dayStr(-150), time: "10:00", place: "Stadtpark Hamburg", contact: "weber@example.de", price: 220, status: "Bezahlt", notes: "34. Woche, Wiese beim Planetarium." }),
-            job({ name: "Sarah mit Kindern", type: "familie", date: dayStr(-45), time: "16:30", place: "Elbstrand Blankenese", contact: "0171 0000000", price: 250, status: "Geliefert", notes: "Zwei Kinder, Hund kommt mit." }),
+            job({ name: "Sarah mit Kindern", type: "familie", date: dayStr(-4), time: "16:30", place: "Elbstrand Blankenese", contact: "0171 0000000", price: 250, status: "Erledigt", notes: "Zwei Kinder, Hund kommt mit." }),
             job({ name: "Geburtstag Keller", type: "fotobox", date: dayStr(9), time: "15:00", place: "Gemeindehaus Buxtehude", contact: "keller@example.de", price: 450, status: "Gebucht", boxPrints: 120, boxKm: 50, boxHours: 3, notes: "50. Geburtstag, Aufbau ab 14 Uhr." }),
         ],
         guides: [
@@ -2051,17 +3282,32 @@ function makeDemo(s) {
             wk({ kind: "plot", customer: "Café Möwe", title: "Schaufenster-Schriftzug", date: dayStr(-100), status: "Übergeben", vals: { foil: "klebe", prod: "", areaMode: "m2", m2: 0.8, qty: 1, plotMin: 45, other: 4 } }),
             wk({ kind: "plot", customer: "Familie Keller", title: "Geburtstags-T-Shirts", date: dayStr(7), status: "In Arbeit", vals: { foil: "buegel", prod: "tshirt", areaMode: "a4", sheets: 0.5, qty: 8, plotMin: 10, other: 0 } }),
             wk({ kind: "plot", customer: "Hochzeit Voigt", title: "Aufkleber für Gastgeschenke", date: dayStr(30), status: "Anfrage", vals: { foil: "sticker", prod: "", areaMode: "cm", w: 5, h: 5, qty: 100, plotMin: 3, other: 0 } }),
+            wk({ id: idPlatte, kind: "druck", customer: "Familie Keller", title: "Türschild, Platte", date: dayStr(10), status: "In Arbeit", vals: { parts: [
+                        { id: "p0", label: "Platte", mat: "pla", grams: 180, hours: 6, notes: "200 × 120 mm, vier Bohrungen Ø 4 mm", images: [] },
+                        { id: "p1", label: "Knöpfe", mat: "asa", grams: 25, hours: 1.5, notes: "Schwarz, M4-Gewindeeinsätze", images: [] },
+                        { id: "p2", label: "Rahmen", mat: "petg", grams: 90, hours: 3.5, notes: "Braun", images: [] },
+                    ], minutes: 20, other: 2 }, notes: "Drei Filamente in einem Projekt." }),
+            wk({ kind: "stick", customer: "Familie Keller", title: "Patch für das Türschild", date: dayStr(9), status: "Angenommen", vals: { prod: "patch", qty: 1, stitchesK: 5, colors: 3, other: 0.5 }, links: [{ id: idPlatte, note: "Wird mittig oben auf die Platte geklebt" }] }),
+            wk({ kind: "plot", customer: "Familie Keller", title: "Vinyl-Sticker Hausnummer", date: dayStr(9), status: "Angenommen", vals: { foil: "klebe", prod: "", areaMode: "cm", w: 8, h: 8, qty: 1, plotMin: 6, other: 0 }, links: [{ id: idPlatte, note: "Kommt unten rechts auf die Platte" }] }),
+            wk({ kind: "strom", title: "Drucker läuft rund um die Uhr", status: "Aktuell", date: "", vals: { mode: "always", onH: 0, h_pla: 900, h_petg: 450, h_asa: 250, h_abs: 100 }, notes: "Plan für das ganze Jahr, mit Standby.", checklist: [] }),
             wk({ kind: "neu", title: "Laserplotter", status: "Geplant", date: "", vals: { price: 1800, sellOld: 0, years: 5, runYear: 60, income: 40, costUse: 8, uses: 60 }, notes: "Für Gravuren auf Holz und Acryl." }),
         ],
     };
+    out.work.forEach((x, i) => { x.checklist = (x.checklist && x.checklist.length) || isCalcOnly(x.kind) ? x.checklist : lines(s.workChecklistText || "").map((tx, j) => ({ id: uid(), text: tx, done: ["Übergeben", "Bezahlt"].includes(x.status) ? true : j < (i % 3) })); });
+    return out;
 }
 /* ───────────── Startseite ───────────── */
 const KIND_LABEL = { w: "Hochzeit", j: "Auftrag", k: "Werkstatt" };
-function Dashboard({ weddings, jobs, guides, work, s, open, go, hasDemo, onLoadDemo, onRemoveDemo }) {
+function Dashboard({ weddings, jobs, guides, work, s, open, go, hasDemo, onLoadDemo, onRemoveDemo, onStep, onTodo, hid = {} }) {
+    weddings = hid.hochzeiten ? [] : weddings;
+    jobs = hid.auftraege ? [] : jobs;
+    work = hid.werkstatt ? [] : work.filter((x) => !hid[x.kind]);
+    guides = hid.anleitungen ? [] : guides;
     const today = todayStr();
     const now = new Date();
     const year = String(now.getFullYear());
     const [yr, setYr] = useState(now.getFullYear());
+    const [moreTodos, setMoreTodos] = useState(false);
     const greet = now.getHours() < 11 ? "Guten Morgen" : now.getHours() < 18 ? "Guten Tag" : "Guten Abend";
     const events = [
         ...weddings.map((w) => {
@@ -2074,7 +3320,7 @@ function Dashboard({ weddings, jobs, guides, work, s, open, go, hasDemo, onLoadD
             return { kind: "j", id: j.id, date: j.date, title: j.name || "Ohne Namen", place: j.place || (t ? t.name : ""),
                 status: j.status, price: j.price || 0, done: j.checklist.filter((i) => i.done).length, total: j.checklist.length };
         }),
-        ...work.filter((w) => w.kind !== "neu").map((w) => {
+        ...work.filter((w) => !isCalcOnly(w.kind)).map((w) => {
             const r = workResult(s, w);
             return { kind: "k", kindKey: w.kind, tone: r.calc.tone, id: w.id, date: w.date, title: w.title || KIND_NAME[w.kind], place: w.customer,
                 status: w.status, price: r.ready ? r.res.price : 0, done: 0, total: 0 };
@@ -2110,6 +3356,22 @@ function Dashboard({ weddings, jobs, guides, work, s, open, go, hasDemo, onLoadD
     const bestIdx = mBook.indexOf(Math.max(...mBook));
     const activeMonths = mBook.filter((m) => m > 0).length;
     const lastGuides = guides.slice(-2).reverse();
+    const tasks = [];
+    [...weddings.map((w) => ({ kind: "w", it: w, title: [w.bride, w.groom].filter(Boolean).join(" & ") || "Hochzeit" })), ...jobs.map((j) => ({ kind: "j", it: j, title: j.name || "Auftrag" }))].forEach(({ kind, it, title }) => {
+        if (!it.date || it.date > today || isEarly(it.status) || ["Geliefert", "Bezahlt"].includes(it.status))
+            return;
+        (s.postSteps || []).forEach((st) => { if (!(it.postDone || {})[st.id])
+            tasks.push({ kind, id: it.id, stepId: st.id, step: st.name, title, due: addDays(it.date, st.days) }); });
+    });
+    tasks.sort((a, b) => a.due.localeCompare(b.due));
+    const todoDone = ["Anfrage", "Angebot", "Geliefert", "Bezahlt", "Übergeben", "Verworfen", "Gekauft"];
+    const todoProjects = [
+        ...weddings.map((w) => ({ kind: "w", id: w.id, title: [w.bride, w.groom].filter(Boolean).join(" & ") || "Hochzeit", sub: w.city, date: w.date, status: w.status, list: w.checklist || [] })),
+        ...jobs.map((j) => ({ kind: "j", id: j.id, title: j.name || "Auftrag", sub: "", date: j.date, status: j.status, list: j.checklist || [] })),
+        ...work.filter((x) => !isCalcOnly(x.kind)).map((x) => ({ kind: "k", id: x.id, title: x.title || KIND_NAME[x.kind], sub: x.customer, date: x.date, status: x.status, list: x.checklist || [] })),
+    ].filter((x) => x.list.some((i) => !i.done) && !todoDone.includes(x.status)).sort(byDate);
+    const todoOpen = todoProjects.reduce((a, x) => a + x.list.filter((i) => !i.done).length, 0);
+    const kp = [[!hid.hochzeiten, yW.length, "Hochzeiten"], [!hid.auftraege, yJ.length, "Aufträge"], [!hid.werkstatt, yK.length, "Werkstatt"]].filter((x) => x[0]);
     return (React.createElement("div", null,
         React.createElement("div", { className: "pagehead" },
             React.createElement("div", null,
@@ -2156,10 +3418,8 @@ function Dashboard({ weddings, jobs, guides, work, s, open, go, hasDemo, onLoadD
                         React.createElement("strong", null, eur(booked)),
                         React.createElement("span", null, "gebuchter Umsatz")),
                     React.createElement("div", null,
-                        React.createElement("strong", null, weddingsThisYear),
-                        React.createElement("span", null,
-                            "Hochzeiten ",
-                            year)),
+                        React.createElement("strong", null, hid.hochzeiten ? events.filter((e) => e.date && e.date.slice(0, 4) === year).length : weddingsThisYear),
+                        React.createElement("span", null, hid.hochzeiten ? `Einträge ${year}` : `Hochzeiten ${year}`)),
                     React.createElement("div", null,
                         React.createElement("strong", null, openRequests),
                         React.createElement("span", null, "offene Anfragen"))),
@@ -2178,6 +3438,21 @@ function Dashboard({ weddings, jobs, guides, work, s, open, go, hasDemo, onLoadD
                                 d !== null ? ` · ${d < 0 ? `${-d} Tage überfällig` : inDays(d)}` : "")),
                         React.createElement(Pill, { s: e.status })));
                 }))),
+                tasks.length > 0 && (React.createElement(Section, { title: "Fristen nach dem Shooting", aside: `${tasks.length} offen` },
+                    React.createElement("div", { className: "panel fristen" }, tasks.slice(0, 8).map((x) => {
+                        const d = daysUntil(x.due);
+                        return (React.createElement("div", { className: "ck" + (d < 0 ? " late" : ""), key: x.kind + x.id + x.stepId },
+                            React.createElement("button", { type: "button", className: "cbox", "aria-label": "als erledigt markieren", onClick: () => onStep(x.kind, x.id, x.stepId) }),
+                            React.createElement("button", { type: "button", className: "ctext fbtn", onClick: () => open(x.kind, x.id) },
+                                x.step,
+                                React.createElement("small", { className: "due" },
+                                    x.title,
+                                    " \u00B7 ",
+                                    d < 0 ? `überfällig seit ${-d} ${-d === 1 ? "Tag" : "Tagen"}` : d === 0 ? "heute fällig" : `in ${d} ${d === 1 ? "Tag" : "Tagen"}`))));
+                    })))),
+                todoProjects.length > 0 && (React.createElement(Section, { title: "To-dos", aside: `${todoOpen} offen` },
+                    todoProjects.slice(0, moreTodos ? 30 : 4).map((x) => React.createElement(TodoProject, { key: x.kind + x.id, p: x, onToggle: onTodo, onOpen: open })),
+                    todoProjects.length > 4 && React.createElement("button", { type: "button", className: "link subtle", onClick: () => setMoreTodos(!moreTodos) }, moreTodos ? "Weniger anzeigen" : `Alle ${todoProjects.length} Projekte anzeigen`))),
                 upcoming.length > 1 && (React.createElement(Section, { title: "Als N\u00E4chstes" }, upcoming.slice(1, 6).map((e) => {
                     const p = dateParts(e.date);
                     return (React.createElement("button", { key: e.kind + e.id, className: "card slim", onClick: () => open(e.kind, e.id) },
@@ -2232,14 +3507,9 @@ function Dashboard({ weddings, jobs, guides, work, s, open, go, hasDemo, onLoadD
                             React.createElement("strong", null, eur(activeMonths ? yRev / activeMonths : 0)),
                             React.createElement("span", null, "\u00D8 pro Monat mit Umsatz")),
                         React.createElement("div", null,
-                            React.createElement("strong", null,
-                                yW.length,
-                                " \u00B7 ",
-                                yJ.length,
-                                " \u00B7 ",
-                                yK.length),
-                            React.createElement("span", null, "Hochzeiten \u00B7 Auftr\u00E4ge \u00B7 Werkstatt")),
-                        React.createElement("div", null,
+                            React.createElement("strong", null, kp.map((x) => x[1]).join(" · ")),
+                            React.createElement("span", null, kp.map((x) => x[2]).join(" · "))),
+                        !hid.hochzeiten && React.createElement("div", null,
                             React.createElement("strong", null, eur(avgW)),
                             React.createElement("span", null, "\u00D8 pro Hochzeit")),
                         yRev > 0 && React.createElement("div", { className: "wide" },
@@ -2273,6 +3543,9 @@ function App() {
     const [work, setWork, r5] = usePersist("fm:work", []);
     const [demoSeen, setDemoSeen, r6] = usePersist("fm:demoSeen", false);
     const [nbRaw, setNb, r7] = usePersist("fm:nb", DEFAULT_NB);
+    const [auth, setAuth, r8] = usePersist("fm:auth", null);
+    const [locked, setLocked] = useState(true);
+    const hiddenAt = useRef(0);
     const [aview, setAview] = useState("guides");
     const [vw, setVw] = useState(typeof window !== "undefined" ? window.innerWidth : 400);
     const [sysDark, setSysDark] = useState(() => !!(typeof window !== "undefined" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches));
@@ -2294,7 +3567,9 @@ function App() {
         lists: { ...DEFAULT_SETTINGS.lists, ...(settingsRaw.lists || {}) },
         theme: { ...DEFAULT_THEME, ...(settingsRaw.theme || {}) },
     }), [settingsRaw]);
-    const ready = r1 && r2 && r3 && r4 && r5 && r6 && r7;
+    const ready = r1 && r2 && r3 && r4 && r5 && r6 && r7 && r8;
+    const hid = s.hide || {};
+    const gate = ready && (auth === null || (!!auth && auth.enabled && locked));
     const nbAll = useMemo(() => ({
         tol: { ...DEFAULT_NB.tol, ...(nbRaw.tol || {}) },
         inspo: { ...DEFAULT_NB.inspo, ...(nbRaw.inspo || {}) },
@@ -2321,6 +3596,23 @@ function App() {
         else
             m.removeListener(f); };
     }, []);
+    useEffect(() => {
+        const onVis = () => {
+            var _a;
+            if (document.visibilityState === "hidden") {
+                hiddenAt.current = Date.now();
+                return;
+            }
+            const m = auth && auth.enabled ? ((_a = auth.lockAfter) !== null && _a !== void 0 ? _a : 5) : 0;
+            if (m > 0 && hiddenAt.current && Date.now() - hiddenAt.current > m * 60000)
+                setLocked(true);
+            hiddenAt.current = 0;
+        };
+        document.addEventListener("visibilitychange", onVis);
+        return () => document.removeEventListener("visibilitychange", onVis);
+    }, [auth]);
+    useEffect(() => { if (hid[tab])
+        setTab("start"); }, [hid.hochzeiten, hid.auftraege, hid.werkstatt, hid.anleitungen, tab]);
     // Einmalig: Auftragsart „Fotobox-Miete“ für bereits gespeicherte Einstellungen ergänzen.
     useEffect(() => {
         if (!ready || settingsRaw.mig6)
@@ -2365,7 +3657,8 @@ function App() {
         return { id: uid(), name: "", type: t ? t.id : "", date: "", time: "", place: "", contact: "", price: t ? t.price : 0, status: "Anfrage", notes: "", checklist: [], boxPrints: bm.prints, boxKm: bm.km, boxHours: bm.workH };
     };
     const blankWork = (kind) => ({
-        id: uid(), kind, customer: "", title: "", date: "", status: kind === "neu" ? "Geplant" : "Anfrage", notes: "", vals: {},
+        id: uid(), kind, customer: "", title: "", date: "", status: kind === "neu" ? "Geplant" : kind === "strom" ? "Entwurf" : "Anfrage", notes: "", vals: {}, links: [],
+        checklist: isCalcOnly(kind) ? [] : lines(s.workChecklistText || "").map((x) => ({ id: uid(), text: x, done: false })),
         snap: snapWork(s), snapFrom: new Date().toISOString(),
     });
     const blankGuide = () => ({ id: uid(), title: "", location: "", date: "", vals: {}, ext: Array(12).fill(""), acc: Array(5).fill(""), text: "", other: "", images: [], diff: {} });
@@ -2390,6 +3683,48 @@ function App() {
         setGuides(keep);
         setWork(keep);
         setToast("Beispieldaten entfernt");
+    };
+    const register = async (name, pin) => {
+        const salt = newSalt();
+        setAuth({ name, salt, hash: await hashPin(pin, salt), len: pin.length, enabled: true, lockAfter: 5 });
+        setLocked(false);
+    };
+    const login = async (pin) => {
+        const ok = !!(auth && auth.hash) && (await hashPin(pin, auth.salt)) === auth.hash;
+        if (ok)
+            setLocked(false);
+        return ok;
+    };
+    const toggleTodo = (kind, id, itemId) => {
+        const f = (arr) => arr.map((x) => (x.id === id ? { ...x, checklist: (x.checklist || []).map((i) => (i.id === itemId ? { ...i, done: !i.done } : i)), updatedAt: new Date().toISOString() } : x));
+        if (kind === "w")
+            setWeddings(f);
+        else if (kind === "j")
+            setJobs(f);
+        else
+            setWork(f);
+    };
+    const toggleStep = (kind, id, stepId) => {
+        const f = (arr) => arr.map((x) => (x.id === id ? { ...x, postDone: { ...(x.postDone || {}), [stepId]: true }, updatedAt: new Date().toISOString() } : x));
+        if (kind === "w")
+            setWeddings(f);
+        else
+            setJobs(f);
+    };
+    const resetAll = () => {
+        setSettings(DEFAULT_SETTINGS);
+        setWeddings([]);
+        setJobs([]);
+        setGuides([]);
+        setWork([]);
+        setNb(DEFAULT_NB);
+        setDemoSeen(true);
+        setAuth(null);
+        setLocked(false);
+        setView(null);
+        setTab("start");
+        setJump(null);
+        setToast("Alles gelöscht");
     };
     const hasDemo = [weddings, jobs, guides, work].some((l) => l.some((x) => x.demo));
     const upsert = (setter) => (raw) => {
@@ -2463,18 +3798,18 @@ function App() {
         }
         else if (view.kind === "k") {
             const item = isNew ? view.item : work.find((x) => x.id === view.id);
-            body = item && (React.createElement(Editor, { key: item.id, initial: item, isNew: isNew, titleOf: (d) => d.title || (isNew ? (d.kind === "neu" ? "Neue Anschaffung" : `Neu: ${KIND_NAME[d.kind]}`) : ""), body: (d, u) => React.createElement(WorkBody, { w: d, s: s, update: u, nb: nbAll.tol, onNb: (v) => setNb((a) => ({ ...a, tol: v })) }), card: (d) => React.createElement(WorkCardView, { w: d, s: s }), summary: (d) => {
+            body = item && (React.createElement(Editor, { key: item.id, initial: item, isNew: isNew, titleOf: (d) => d.title || (isNew ? (d.kind === "neu" ? "Neue Anschaffung" : d.kind === "strom" ? "Neue Stromrechnung" : `Neu: ${KIND_NAME[d.kind]}`) : ""), body: (d, u) => React.createElement(WorkBody, { w: d, s: s, update: u, nb: nbAll.tol, onNb: (v) => setNb((a) => ({ ...a, tol: v })), allWork: work }), card: (d) => React.createElement(WorkCardView, { w: d, s: s, allWork: work }), summary: (d) => {
                     const r = workResult(s, d);
                     return r.ready ? { label: r.res.head.label, value: r.res.head.value, lines: r.res.lines } : { label: "Preis", value: "folgt", lines: [] };
                 }, onSave: upsert(setWork), onCancel: cancel, onDelete: () => remove(setWork, item.id) }));
         }
         else if (view.kind === "w") {
             const item = isNew ? view.item : weddings.find((x) => x.id === view.id);
-            body = item && (React.createElement(Editor, { key: item.id, initial: item, isNew: isNew, titleOf: (d) => [d.bride, d.groom].filter(Boolean).join(" & ") || (isNew ? "Neue Hochzeit" : ""), body: (d, u) => React.createElement(WeddingBody, { w: d, s: s, update: u, lensNb: nbAll.lens, onLensNb: (v) => setNb((a) => ({ ...a, lens: v })) }), summary: (d) => calcWedding(d, s), card: (d) => React.createElement(WeddingCardView, { w: d, s: s, lens: nbAll.lens }), onSave: upsert(setWeddings), onCancel: cancel, onDelete: () => remove(setWeddings, item.id) }));
+            body = item && (React.createElement(Editor, { key: item.id, initial: item, isNew: isNew, titleOf: (d) => [d.bride, d.groom].filter(Boolean).join(" & ") || (isNew ? "Neue Hochzeit" : ""), body: (d, u) => React.createElement(WeddingBody, { w: d, s: s, update: u, lensNb: nbAll.lens, onLensNb: (v) => setNb((a) => ({ ...a, lens: v })), inspoNb: nbAll.inspo }), summary: (d) => calcWedding(d, s), card: (d) => React.createElement(WeddingCardView, { w: d, s: s, lens: nbAll.lens, inspo: nbAll.inspo }), onSave: upsert(setWeddings), onCancel: cancel, onDelete: () => remove(setWeddings, item.id) }));
         }
         else if (view.kind === "j") {
             const item = isNew ? view.item : jobs.find((x) => x.id === view.id);
-            body = item && (React.createElement(Editor, { key: item.id, initial: item, isNew: isNew, titleOf: (d) => d.name || (isNew ? "Neuer Auftrag" : ""), body: (d, u) => React.createElement(JobBody, { j: d, s: s, update: u, addType: addType, lensNb: nbAll.lens, onLensNb: (v) => setNb((a) => ({ ...a, lens: v })) }), card: (d) => React.createElement(JobCardView, { j: d, s: s, lens: nbAll.lens }), onSave: upsert(setJobs), onCancel: cancel, onDelete: () => remove(setJobs, item.id) }));
+            body = item && (React.createElement(Editor, { key: item.id, initial: item, isNew: isNew, titleOf: (d) => d.name || (isNew ? "Neuer Auftrag" : ""), body: (d, u) => React.createElement(JobBody, { j: d, s: s, update: u, addType: addType, lensNb: nbAll.lens, onLensNb: (v) => setNb((a) => ({ ...a, lens: v })), inspoNb: nbAll.inspo }), card: (d) => React.createElement(JobCardView, { j: d, s: s, lens: nbAll.lens, inspo: nbAll.inspo }), onSave: upsert(setJobs), onCancel: cancel, onDelete: () => remove(setJobs, item.id) }));
         }
         else {
             const item = isNew ? view.item : guides.find((x) => x.id === view.id);
@@ -2482,7 +3817,7 @@ function App() {
         }
     }
     else if (tab === "start") {
-        body = React.createElement(Dashboard, { weddings: weddings, jobs: jobs, guides: guides, work: work, s: s, open: open, go: go, hasDemo: hasDemo, onLoadDemo: loadDemo, onRemoveDemo: removeDemo });
+        body = React.createElement(Dashboard, { onTodo: toggleTodo, onStep: toggleStep, hid: hid, weddings: weddings, jobs: jobs, guides: guides, work: work, s: s, open: open, go: go, hasDemo: hasDemo, onLoadDemo: loadDemo, onRemoveDemo: removeDemo });
     }
     else if (tab === "hochzeiten") {
         const list = weddings.map((w) => ({ ...w, calc: calcWedding(w, s) })).sort(byDate);
@@ -2508,9 +3843,9 @@ function App() {
             React.createElement("div", { className: "cardgrid" }, list.map((j) => React.createElement(JobCard, { key: j.id, j: j, s: s, onOpen: () => open("j", j.id) })))));
     }
     else if (tab === "werkstatt") {
-        const filters = [["open", "Offen"], ["druck", "3D-Druck"], ["stick", "Stickerei"], ["plot", "Plotter"], ["neu", "Anschaffungen"], ["all", "Alle"]];
+        const filters = [["open", "Offen"], ["druck", "3D-Druck"], ["stick", "Stickerei"], ["plot", "Plotter"], ["neu", "Anschaffungen"], ["strom", "Strom"], ["all", "Alle"]].filter(([k]) => !hid[k]);
         const match = (w, f) => (f === "all" ? true : f === "open" ? workOpen(w) : w.kind === f);
-        const list = work.filter((w) => match(w, wfilter)).sort(byDate);
+        const list = work.filter((w) => !hid[w.kind] && match(w, wfilter)).sort(byDate);
         body = (React.createElement("div", null,
             React.createElement("div", { className: "bar" },
                 React.createElement("h1", { className: "title" }, "Werkstatt"),
@@ -2518,7 +3853,7 @@ function App() {
                     React.createElement(Plus, { size: 18 }),
                     " Neu")),
             React.createElement("p", { className: "muted lead" }, "3D-Druck, Stickerei und Plotter: Projekte anlegen, Preis berechnen und die Warteschlange im Blick behalten."),
-            picker && (React.createElement("div", { className: "quick two" }, CALCS.map((c) => {
+            picker && (React.createElement("div", { className: "quick two" }, CALCS.filter((c) => !hid[c.id]).map((c) => {
                 const Icon = c.icon;
                 return (React.createElement("button", { key: c.id, onClick: () => { setPicker(false); startNewWork(c.id); }, style: { "--q": `var(--c-${c.tone})`, "--ql": `var(--c-${c.tone}-l)` } },
                     React.createElement("span", { className: "qi" },
@@ -2529,16 +3864,16 @@ function App() {
             }))),
             React.createElement("div", { className: "chips filters" }, filters.map(([k, l]) => (React.createElement("button", { key: k, className: "chip" + (wfilter === k ? " on" : ""), onClick: () => setWfilter(k) },
                 l,
-                React.createElement("small", null, work.filter((w) => match(w, k)).length))))),
+                React.createElement("small", null, work.filter((w) => !hid[w.kind] && match(w, k)).length))))),
             list.length === 0 && React.createElement("p", { className: "empty" }, work.length === 0 ? "Noch kein Projekt. Tippe auf „Neu“ und wähle 3D-Druck, Stickerei, Plotter oder eine Anschaffung." : "In dieser Ansicht ist nichts."),
-            React.createElement("div", { className: "cardgrid" }, list.map((w) => React.createElement(WorkCard, { key: w.id, w: w, s: s, onOpen: () => open("k", w.id) }))),
-            React.createElement(Section, { title: "Nachschlagen" },
+            React.createElement("div", { className: "cardgrid" }, list.map((w) => React.createElement(WorkCard, { key: w.id, w: w, s: s, onOpen: () => open("k", w.id), linkCount: workGroup(work, w).length }))),
+            !hid.druck && (React.createElement(Section, { title: "Nachschlagen" },
                 React.createElement("button", { className: "card", onClick: () => open("n", "tol") },
                     React.createElement("div", { className: "tile k" },
                         React.createElement(BookOpen, { size: 26 })),
                     React.createElement("div", { className: "cbody" },
                         React.createElement("strong", null, "Toleranzen und Gewinde"),
-                        React.createElement("span", { className: "sub" }, "Gewindeeins\u00E4tze, Kernl\u00F6cher, Passungen. Mit eigenen Reitern, Texten, Bildern und Links.")))),
+                        React.createElement("span", { className: "sub" }, "Gewindeeins\u00E4tze, Kernl\u00F6cher, Passungen. Mit eigenen Reitern, Texten, Bildern und Links."))))),
             React.createElement("button", { className: "link wlink", onClick: () => editMachine("") }, "Maschinen, Materialien und Gewinn einstellen")));
     }
     else if (tab === "anleitungen") {
@@ -2557,12 +3892,12 @@ function App() {
                 guides.length === 0 && React.createElement("p", { className: "empty" }, "Noch keine Anleitung. Lege deine erste an."),
                 React.createElement("div", { className: "cardgrid" }, guides.map((g) => React.createElement(GuideCard, { key: g.id, g: g, s: s, onOpen: () => open("g", g.id) }))))) : aview === "lens" ? (React.createElement(React.Fragment, null,
                 React.createElement("p", { className: "muted lead" }, "Welche Brennweite f\u00FCr welche Shots, mit Beispielbildern. Beim Planen w\u00E4hlst du die Objektive in der Hochzeit oder im Auftrag aus."),
-                React.createElement(Notebook, { nb: nbAll.lens, onChange: (v) => setNb((a) => ({ ...a, lens: v })), empty: "In diesem Reiter ist noch nichts. Tippe auf \u201ENeuer Eintrag\u201C und f\u00FCge Beispielbilder hinzu." }))) : (React.createElement(React.Fragment, null,
+                React.createElement(Notebook, { nb: nbAll.lens, linkedFor: (tabId) => nbAll.inspo.entries.filter((e) => e.lens === tabId).map((e) => ({ e, tabName: (nbAll.inspo.tabs.find((x) => x.id === e.tab) || {}).name || "" })), onChange: (v) => setNb((a) => ({ ...a, lens: v })), empty: "In diesem Reiter ist noch nichts. Tippe auf \u201ENeuer Eintrag\u201C und f\u00FCge Beispielbilder hinzu." }))) : (React.createElement(React.Fragment, null,
                 React.createElement("p", { className: "muted lead" }, "Dein Bilderarchiv: Beispielfotos nach Kategorie, mit Text und Links zu Instagram oder YouTube."),
-                React.createElement(Notebook, { nb: nbAll.inspo, onChange: (v) => setNb((a) => ({ ...a, inspo: v })), empty: "In diesem Reiter ist noch nichts. Tippe auf \u201ENeuer Eintrag\u201C und f\u00FCge Bilder, Text oder einen Link hinzu." })))));
+                React.createElement(Notebook, { nb: nbAll.inspo, lensTabs: nbAll.lens.tabs, onChange: (v) => setNb((a) => ({ ...a, inspo: v })), empty: "In diesem Reiter ist noch nichts. Tippe auf \u201ENeuer Eintrag\u201C und f\u00FCge Bilder, Text oder einen Link hinzu." })))));
     }
     else
-        body = React.createElement(SettingsView, { dark: dark, key: jump ? jump.sub + (jump.machine || "") : "std", onApplyBox: applyBoxPrice, hasDemo: hasDemo, onLoadDemo: loadDemo, onRemoveDemo: removeDemo, initialSub: jump ? jump.sub : "w", openMachine: jump ? jump.machine : "", s: s, setS: setSettings, onExport: exportData, onImport: importData, onReset: () => { setSettings(DEFAULT_SETTINGS); setToast("Zurückgesetzt"); } });
+        body = React.createElement(SettingsView, { auth: auth, onAuth: setAuth, onLock: () => setLocked(true), onResetAll: resetAll, dark: dark, key: jump ? jump.sub + (jump.machine || "") : "std", onApplyBox: applyBoxPrice, hasDemo: hasDemo, onLoadDemo: loadDemo, onRemoveDemo: removeDemo, initialSub: jump ? jump.sub : "w", openMachine: jump ? jump.machine : "", s: s, setS: setSettings, onExport: exportData, onImport: importData, onReset: () => { setSettings(DEFAULT_SETTINGS); setToast("Zurückgesetzt"); } });
     const accKey = view
         ? { w: "weddings", j: "jobs", g: "guides", k: "work", n: "work" }[view.kind]
         : { hochzeiten: "weddings", auftraege: "jobs", anleitungen: "guides", werkstatt: "work" }[tab] || "home";
@@ -2588,24 +3923,26 @@ function App() {
     ];
     return (React.createElement("div", { className: "fm" + (dark ? " dark" : "") + (wide ? " wide" : "") + (view ? " editing" : ""), style: themeVars(s.theme, accKey, dark) },
         React.createElement("style", null, CSS),
-        React.createElement("main", null,
-            body,
-            ready && footMsg && React.createElement("footer", { className: "pagefoot" },
-                React.createElement("span", null, footMsg),
-                React.createElement("small", null, APP_VERSION))),
-        toast && React.createElement("div", { className: "toast", role: "status" },
-            React.createElement(Check, { size: 16, strokeWidth: 3 }),
-            " ",
-            toast),
-        !view && (React.createElement("nav", null,
-            React.createElement("div", { className: "brand" },
-                React.createElement(Sprig, { className: "brand-sprig" }),
-                React.createElement("div", null,
-                    React.createElement("strong", null, "Foto-Manager"),
+        gate ? (React.createElement(AuthScreen, { key: auth ? "konto" : "neu", auth: auth, onRegister: register, onLogin: login, onSkip: () => { setAuth({ enabled: false }); setLocked(false); }, onResetAll: resetAll })) : (React.createElement(React.Fragment, null,
+            React.createElement("main", null,
+                body,
+                ready && footMsg && React.createElement("footer", { className: "pagefoot" },
+                    React.createElement("span", null, footMsg),
                     React.createElement("small", null, APP_VERSION))),
-            tabs.map(([k, l, Icon]) => (React.createElement("button", { key: k, className: (tab === k ? "on" : "") + (k === "einstellungen" ? " icononly" : ""), onClick: () => go(k), "aria-label": l, style: tab === k ? themeVars(s.theme, { start: "home", hochzeiten: "weddings", auftraege: "jobs", werkstatt: "work", anleitungen: "guides", einstellungen: "home" }[k], dark) : undefined },
-                React.createElement(Icon, { size: 21 }),
-                React.createElement("span", null, l))))))));
+            toast && React.createElement("div", { className: "toast", role: "status" },
+                React.createElement(Check, { size: 16, strokeWidth: 3 }),
+                " ",
+                toast),
+            !view && (React.createElement("nav", null,
+                React.createElement("div", { className: "brand" },
+                    React.createElement(Sprig, { className: "brand-sprig" }),
+                    React.createElement("div", null,
+                        React.createElement("strong", null, "Foto-Manager"),
+                        React.createElement("small", null, APP_VERSION))),
+                tabs.filter(([k]) => !hid[k]).map(([k, l, Icon]) => (React.createElement("button", { key: k, className: (tab === k ? "on" : "") + (k === "einstellungen" ? " icononly" : ""), onClick: () => go(k), "aria-label": l, style: tab === k ? themeVars(s.theme, { start: "home", hochzeiten: "weddings", auftraege: "jobs", werkstatt: "work", anleitungen: "guides", einstellungen: "home" }[k], dark) : undefined },
+                    React.createElement("span", { className: "ni" },
+                        React.createElement(Icon, { size: 21 })),
+                    React.createElement("span", { className: "nl" }, l))))))))));
 }
 /* ───────────── Styles ───────────── */
 const CSS = `
@@ -2808,12 +4145,13 @@ const CSS = `
 /* Navigation */
 .fm nav{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:6;max-width:616px;margin:0 auto;background:var(--card);border-radius:26px;display:flex;padding:6px 4px;box-shadow:0 10px 30px rgba(60,40,20,.2)}
 .fm nav button{flex:1;min-width:0;background:none;border:none;border-radius:20px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 0;font:inherit;font-size:10px;letter-spacing:-.01em;color:var(--muted);cursor:pointer;min-height:56px;justify-content:center}
-.fm nav button span{max-width:100%;overflow:hidden;text-overflow:clip;white-space:nowrap}
+.fm nav button .nl{display:block;max-width:100%;white-space:nowrap;line-height:1.1}
+.fm nav button .ni{display:grid;place-items:center;width:46px;height:30px;border-radius:99px 99px 12px 12px}
+.fm nav button .ni svg{display:block}
+.fm nav button.on .ni{background:var(--acc);color:var(--on-acc)}
+.fm nav button.icononly .ni{width:38px}
 .fm nav button.on{color:var(--acc-d);font-weight:700}
 .fm nav button.icononly{flex:0 0 40px}
-.fm nav button.icononly svg{padding:5px 9px}
-.fm nav button svg{box-sizing:content-box;padding:5px 13px;border-radius:99px 99px 12px 12px}
-.fm nav button.on svg{background:var(--acc);color:var(--on-acc)}
 .fm .toast{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:50;background:var(--ink);color:var(--bg);border-radius:99px;padding:10px 18px;display:flex;gap:8px;align-items:center;font-weight:600;box-shadow:0 10px 30px rgba(60,40,20,.3)}
 /* Dekoration */
 .fm .pagehead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
@@ -2949,10 +4287,11 @@ const CSS = `
 
 /* Galerie, Skizze, Notizbuch */
 .fm button.gadd{background:none;font:inherit;border:2px dashed var(--track);cursor:pointer;padding:6px}
-.fm .sketch{position:fixed;inset:0;z-index:60;background:rgba(20,14,10,.62);display:grid;place-items:center;padding:12px;overflow:auto}
-.fm .sketch-in{background:var(--card);border-radius:28px;padding:16px;width:min(560px,100%);display:flex;flex-direction:column;gap:12px}
+.fm .sketch{position:fixed;inset:0;z-index:60;background:var(--bg);display:flex;flex-direction:column;overflow:hidden;overscroll-behavior:none;height:100vh;height:100dvh}
+.fm .sketch-in{width:100%;max-width:640px;margin:0 auto;padding:12px 14px calc(12px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;-webkit-user-select:none;user-select:none}
+.fm .sk-stage{position:relative;flex:1 1 240px;min-height:170px}
 .fm .sk-title{font-family:var(--serif);font-size:20px}
-.fm .sketch canvas{width:100%;aspect-ratio:1;border-radius:18px;background:#fff;touch-action:none;box-shadow:0 0 0 1px var(--line);cursor:crosshair;display:block}
+.fm .sketch canvas{position:absolute;inset:0;margin:auto;max-width:100%;max-height:100%;aspect-ratio:1;border-radius:18px;background:#fff;touch-action:none;-webkit-touch-callout:none;box-shadow:0 0 0 1px var(--line);cursor:crosshair;display:block}
 .fm .sk-tools{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
 .fm .sk-col{width:36px;height:36px;border-radius:50%;border:3px solid var(--card);box-shadow:0 0 0 1.5px var(--line);cursor:pointer;padding:0}
 .fm .sk-col.on{box-shadow:0 0 0 3px var(--acc)}
@@ -3012,7 +4351,7 @@ const CSS = `
 /* Desktop: Seitenleiste, Spalten */
 .fm .dash,.fm .dcol,.fm .cardgrid{display:block}
 .fm .brand{display:none}
-.fm nav button.icononly span{display:none}
+.fm nav button.icononly .nl{display:none}
 .fm.wide .dash{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:0 36px;align-items:start}
 .fm.wide .cardgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:14px}
 .fm.wide .cardgrid .card{margin:0}
@@ -3027,8 +4366,8 @@ const CSS = `
 .fm.wide .brand small{color:var(--muted);font-size:12px}
 .fm.wide nav button{flex:none;flex-direction:row;justify-content:flex-start;gap:12px;width:100%;padding:6px 10px;min-height:54px;font-size:15px;letter-spacing:0;border-radius:18px}
 .fm.wide nav button.icononly{flex:none}
-.fm.wide nav button.icononly span{display:inline}
-.fm.wide nav button svg{padding:8px 12px}
+.fm.wide nav button.icononly .nl{display:inline}
+.fm.wide nav button .ni,.fm.wide nav button.icononly .ni{width:44px;height:34px}
 .fm.wide nav button.on{background:var(--acc-l)}
 .fm.wide .actionbar{left:252px;max-width:720px}
 .fm.wide.editing .actionbar{left:0}
@@ -3047,6 +4386,113 @@ const CSS = `
 .fm .lensname strong{font-family:var(--serif);font-size:18px}
 .fm .lensname .btn{margin-top:0}
 .fm .lensrow input{background:var(--card)}
+/* Anmeldung, Zurücksetzen, Ordner, Skizze */
+.fm .authwrap{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:28px 20px 40px;position:relative;overflow:hidden}
+.fm .authcard{width:min(420px,100%);display:flex;flex-direction:column;align-items:center;gap:12px;position:relative;z-index:1}
+.fm .auth-sprig{width:52px;height:76px;color:var(--c-j)}
+.fm .auth-arch{position:absolute;right:-40px;bottom:-30px;width:300px;color:var(--c-w);opacity:.14;pointer-events:none}
+.fm .auth-title{font-size:44px;margin:0;text-align:center;line-height:1.05}
+.fm .auth-sub{color:var(--muted);text-align:center;margin:0 0 4px}
+.fm .authcard .seg{width:100%}
+.fm .authform{width:100%;display:flex;flex-direction:column;align-items:stretch;gap:2px}
+.fm .authform .btn.save{width:100%;position:static;margin-top:6px;box-shadow:none}
+.fm .authform .link{align-self:center;margin-top:6px}
+.fm .authforgot{width:100%;display:flex;flex-direction:column;align-items:flex-start;gap:8px}
+.fm .center{text-align:center}
+.fm .autherr{color:#B23B4B;font-weight:650;min-height:22px;text-align:center;margin:0}
+.fm .pindots{display:flex;gap:14px;justify-content:center;margin:8px 0 0}
+.fm .pindots i{width:16px;height:16px;border-radius:50%;border:2px solid var(--track);transition:background .12s}
+.fm .pindots i.on{background:var(--acc);border-color:var(--acc)}
+.fm .pindots.shake{animation:fmshake .35s}
+@keyframes fmshake{0%,100%{transform:translateX(0)}20%{transform:translateX(-9px)}40%{transform:translateX(9px)}60%{transform:translateX(-6px)}80%{transform:translateX(6px)}}
+.fm .pad{display:grid;grid-template-columns:repeat(3,72px);gap:12px;justify-content:center;margin:2px 0 4px}
+.fm .pad button{width:72px;height:72px;padding:0;border-radius:50%;border:none;background:var(--card);color:var(--ink);font-family:var(--serif);font-size:27px;cursor:pointer;box-shadow:0 0 0 1px var(--line),0 4px 12px rgba(60,40,20,.08)}
+.fm .pad button:active{background:var(--acc-l)}
+.fm .pad button:disabled{opacity:.4}
+.fm .five{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.fm .fivedots{display:flex;gap:6px;padding-left:12px}
+.fm .fivedots i{width:10px;height:10px;border-radius:50%;background:var(--line)}
+.fm .fivedots i.on{background:#B23B4B}
+.fm .tsub{display:block;font-size:12.5px;color:var(--muted);font-weight:400}
+.fm .catchip{display:inline-block;background:var(--acc-l);color:var(--acc-d);border-radius:99px;padding:3px 10px;font-size:12px;font-weight:650;margin:4px 0 0}
+.fm .linked h4{font-family:var(--serif);font-size:19px;margin:22px 0 2px}
+.fm .folders{margin-top:16px}
+.fm .folders .egal{margin-top:10px}
+.fm .sk-toolbar{margin:0}
+.fm .sk-hint{margin:-4px 0 0}
+.fm .sk-dim{background:var(--acc-l);border-radius:18px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.fm .sk-dimrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.fm .sk-dimrow input{flex:1;min-width:110px}
+.fm .sk-tools .chip{margin-left:auto}
+@media (max-width:350px){.fm nav button{font-size:8.6px;letter-spacing:-.03em}.fm nav button .ni{width:34px}.fm nav button.icononly .ni{width:32px}.fm nav{left:6px;right:6px;padding:6px 2px}}
+.fm .due{display:block;font-size:12.5px;color:var(--muted);font-weight:500;margin-top:2px}
+.fm .ck.late .due{color:#B23B4B;font-weight:650}
+.fm .fbtn{background:none;border:none;font:inherit;color:inherit;text-align:left;cursor:pointer;padding:0}
+.fm .fristen .btn{margin-top:10px}
+.fm .matrow{display:grid;grid-template-columns:1fr 1fr;gap:8px;align-items:center;margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+.fm .matrow .pname{grid-column:1/-1}
+.fm .matctl{grid-column:1/-1;display:flex;justify-content:flex-end;gap:2px}
+.fm .link.subtle{display:block;font-size:12.5px;font-weight:500;color:var(--muted);text-decoration:underline;text-underline-offset:3px;padding:8px 2px 0}
+.fm .todop{background:var(--card);border-radius:18px;margin:0 0 8px;box-shadow:0 0 0 1px var(--line);overflow:hidden}
+.fm .todoh{display:flex;align-items:center;gap:12px;width:100%;background:none;border:none;font:inherit;color:inherit;text-align:left;padding:10px 14px 10px 0;cursor:pointer;min-height:58px}
+.fm .todobar{align-self:stretch;width:5px;border-radius:0 5px 5px 0;background:var(--track);flex:0 0 5px}
+.fm .todop.w .todobar{background:var(--c-w)}
+.fm .todop.j .todobar{background:var(--c-j)}
+.fm .todop.k .todobar{background:var(--c-k)}
+.fm .todot{flex:1;min-width:0;display:flex;flex-direction:column}
+.fm .todot strong{font-size:15.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fm .todot small{color:var(--muted);font-size:12.5px}
+.fm .todon{font-size:13px;color:var(--muted);font-weight:650}
+.fm .todoh svg{color:var(--muted);transition:transform .2s}
+.fm .todop.open .todoh svg{transform:rotate(180deg)}
+.fm .todob{padding:0 14px 8px 19px}
+.fm .linkrow{display:grid;grid-template-columns:44px 1fr auto;gap:10px;align-items:start;padding:10px 0;border-bottom:1px solid var(--line)}
+.fm .linkrow .tile{flex:none;width:44px;height:52px;padding-bottom:8px}
+.fm .linkbody{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fm .linkbody small{color:var(--muted);font-size:12.5px}
+.fm .linkbody input{margin-top:4px;min-height:42px}
+.fm .linknote{font-size:13.5px;background:var(--bg);border-radius:12px;padding:6px 10px;margin-top:3px}
+.fm .linkside{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.fm .linkside b{font-family:var(--serif)}
+.fm .linkadd{display:flex;flex-direction:column;gap:8px;margin-top:12px}
+.fm .linkadd .btn{align-self:flex-start;margin-top:0}
+.fm .linksum{background:var(--bg);border-radius:18px;padding:8px 14px;margin-top:12px}
+.fm .linksum div{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
+.fm .linksum div:last-child{border-bottom:none}
+.fm .linksum .strong{font-weight:700}
+.fm .linksum b{font-family:var(--serif)}
+.fm .parts{display:flex;flex-direction:column;gap:12px}
+.fm .part{background:var(--card);border-radius:22px;padding:14px;box-shadow:0 0 0 1px var(--line)}
+.fm .parthead{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.fm .parthead strong{font-family:var(--serif);font-size:18px}
+.fm .quickg{display:flex;flex-wrap:wrap;gap:8px;margin:-2px 0 12px}
+.fm .partcost{margin:-4px 0 10px}
+.fm .gx.edit{left:6px;right:auto}
+.fm .sk-sel{display:flex;gap:8px;flex-wrap:wrap}
+.fm .sk-sel .btn{margin-top:0}
+.fm .dtabs{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:14px 0 0}
+.fm .dtab{display:flex;justify-content:space-between;align-items:center;gap:8px;background:rgba(255,255,255,.2);color:inherit;border:none;border-radius:16px;padding:10px 12px;font:inherit;cursor:pointer;text-align:left;min-height:50px}
+.fm .dtab span{font-size:13.5px;font-weight:600}
+.fm .dtab b{font-family:var(--serif);font-size:15px;white-space:nowrap}
+.fm .dtab.on{background:rgba(255,255,255,.42)}
+.fm .dtab:last-child:nth-child(odd){grid-column:1/-1}
+.fm .dpanel{background:rgba(255,255,255,.22);border-radius:18px;padding:12px 14px;margin-top:10px}
+.fm .dhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding-bottom:6px;border-bottom:2px solid rgba(255,255,255,.5);margin-bottom:4px}
+.fm .dhead strong{font-size:15px}
+.fm .dhead b{font-family:var(--serif);font-size:18px}
+.fm .drow{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.25);font-size:14px;line-height:1.35}
+.fm .drow:last-child{border-bottom:none}
+.fm .drow b{font-family:var(--serif);white-space:nowrap}
+.fm .dempty{margin:4px 0;font-size:13.5px;opacity:.85}
+.fm .kparts{margin-top:18px;display:flex;flex-direction:column;gap:12px}
+.fm .kparts-h{font-family:var(--serif);font-size:20px;margin:0 2px}
+.fm .kpart{background:var(--card);border-radius:24px;padding:16px 18px;box-shadow:0 1px 2px rgba(60,40,20,.06),0 6px 18px rgba(60,40,20,.05)}
+.fm .kpart-h{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.fm .kpart-h strong{font-family:var(--serif);font-size:19px}
+.fm .kpart-n{width:30px;height:30px;border-radius:50%;background:var(--c-k);color:var(--on-k);display:grid;place-items:center;font-weight:700;font-size:14px;flex:0 0 30px}
+.fm .kpart .krows{margin-top:6px}
+.fm .kpart .knotes{margin:10px 0 0}
+.fm .kpart .kimgs{padding:10px 0 0;border-top:none}
 @media (prefers-reduced-motion:reduce){.fm *{transition:none!important}}
 `;
 ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App, null));
